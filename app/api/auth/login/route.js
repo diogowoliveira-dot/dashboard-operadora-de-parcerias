@@ -17,6 +17,9 @@ export async function POST(req) {
     if (!user || !user.password_hash) {
       return NextResponse.json({ error: 'E-mail ou senha inválidos' }, { status: 401 });
     }
+    if (user.active === false) {
+      return NextResponse.json({ error: 'Conta desativada. Entre em contato com o administrador.' }, { status: 403 });
+    }
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return NextResponse.json({ error: 'E-mail ou senha inválidos' }, { status: 401 });

@@ -15,11 +15,18 @@ export async function getSessionUser(req) {
   const match = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;\\s]+)`));
   if (!match) return null;
   const rows = await sql`
-    SELECT u.id, u.email, u.name, u.role, u.operadora_name
+    SELECT u.id, u.email, u.name, u.role, u.operadora_name, u.active
     FROM sessions s JOIN users u ON u.id = s.user_id
-    WHERE s.token = ${match[1]} AND s.expires_at > NOW()
+    WHERE s.token = ${match[1]} AND s.expires_at > NOW() AND u.active = TRUE
   `;
   return rows[0] || null;
+}
+
+// Helper: requer que o usuário tenha um dos papéis informados
+export async function requireRole(req, ...roles) {
+  const user = await getSessionUser(req);
+  if (!user || !roles.includes(user.role)) return null;
+  return user;
 }
 
 export async function destroySession(req) {

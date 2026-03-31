@@ -31,9 +31,11 @@ const apiAuth = {
   forgotPassword: (email) => fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) }).then(r => r.json()),
   resetPassword: (token, password) => fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password }) }).then(r => r.json()),
   listUsers: () => fetch('/api/users').then(r => r.json()),
-  inviteUser: (email, operadora_name) => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, operadora_name }) }).then(r => r.json()),
+  inviteUser: (email, role, operadora_name) => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, role, operadora_name }) }).then(r => r.json()),
   deleteUser: (id) => fetch('/api/users', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then(r => r.json()),
-  reassignUser: (id, operadora_name) => fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, operadora_name }) }).then(r => r.json()),
+  toggleActive: (id) => fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'toggle-active' }) }).then(r => r.json()),
+  reassignUser: (id, operadora_name) => fetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'reassign', operadora_name }) }).then(r => r.json()),
+  updateProfile: (name, current_password, new_password) => fetch('/api/auth/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, current_password, new_password }) }).then(r => r.json()),
 };
 
 // ═══════════════════════════════════════════
@@ -739,15 +741,26 @@ function ResetScreen({ token, onLogin }) {
 }
 
 // ═══════════════════════════════════════════
+// ROLE BADGE
+// ═══════════════════════════════════════════
+const roleColors = { master: '#E8392A', admin: '#f59e0b', operadora: '#3b82f6' };
+const roleLabel = { master: 'Master', admin: 'Admin', operadora: 'Operadora' };
+function RoleBadge({ role }) {
+  return <span style={{ fontSize: 10, fontWeight: 700, color: roleColors[role] || '#555', background: `${roleColors[role]}18`, padding: '2px 8px', borderRadius: 20, fontFamily: "'JetBrains Mono',monospace", textTransform: 'uppercase', letterSpacing: .5 }}>{roleLabel[role] || role}</span>;
+}
+
+// ═══════════════════════════════════════════
 // USERS TAB (master only)
 // ═══════════════════════════════════════════
 function UsersTab({ ops }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [invEmail, setInvEmail] = useState('');
+  const [invRole, setInvRole] = useState('operadora');
   const [invOp, setInvOp] = useState('');
   const [invMsg, setInvMsg] = useState(null);
-  const [reassigning, setReassigning] = useState(null); // user id
+  const [invLoading, setInvLoading] = useState(false);
+  const [reassigning, setReassigning] = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -759,16 +772,23 @@ function UsersTab({ ops }) {
   useEffect(() => { reload(); }, []);
 
   const invite = async () => {
-    if (!invEmail || !invOp) { setInvMsg({ ok: false, text: 'Preencha e-mail e operadora' }); return; }
-    setInvMsg(null);
-    const data = await apiAuth.inviteUser(invEmail, invOp);
-    if (data.ok) { setInvMsg({ ok: true, text: 'Convite enviado!' }); setInvEmail(''); setInvOp(''); reload(); }
+    if (!invEmail) { setInvMsg({ ok: false, text: 'E-mail obrigatório' }); return; }
+    if (invRole === 'operadora' && !invOp) { setInvMsg({ ok: false, text: 'Selecione a operadora' }); return; }
+    setInvMsg(null); setInvLoading(true);
+    const data = await apiAuth.inviteUser(invEmail, invRole, invRole === 'operadora' ? invOp : undefined);
+    setInvLoading(false);
+    if (data.ok) { setInvMsg({ ok: true, text: '✓ Convite enviado por e-mail!' }); setInvEmail(''); setInvOp(''); reload(); }
     else { setInvMsg({ ok: false, text: data.error || 'Erro ao enviar convite' }); }
   };
 
   const deleteUser = async (id) => {
-    if (!confirm('Remover este usuário?')) return;
+    if (!confirm('Excluir este usuário permanentemente?')) return;
     await apiAuth.deleteUser(id);
+    reload();
+  };
+
+  const toggleActive = async (id) => {
+    await apiAuth.toggleActive(id);
     reload();
   };
 
@@ -778,72 +798,204 @@ function UsersTab({ ops }) {
     reload();
   };
 
+  const tdStyle = { padding: '11px 14px', borderBottom: '1px solid #1a1a1a', fontSize: 13 };
+
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 700 }}>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Gerenciar Usuários</div>
+    <div style={{ padding: '24px 28px', maxWidth: 860 }}>
+      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Gerenciar Usuários</div>
+      <div style={{ fontSize: 13, color: '#555', marginBottom: 24 }}>Convide administradores e operadoras. Apenas o master pode gerenciar usuários.</div>
 
       {/* Invite form */}
-      <div style={{ ...css.card, padding: '20px', marginBottom: 24 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 14, textTransform: 'uppercase', letterSpacing: .5 }}>Convidar novo usuário</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)} placeholder="E-mail do usuário..."
-            style={{ ...css.input, flex: 2, minWidth: 180 }} />
-          <select value={invOp} onChange={e => setInvOp(e.target.value)}
-            style={{ ...css.input, flex: 1, minWidth: 140, cursor: 'pointer' }}>
-            <option value="">Operadora...</option>
-            {ops.map((op, i) => <option key={i} value={op.name}>{op.name}</option>)}
-          </select>
-          <button onClick={invite} style={{ ...css.btn, background: '#E8392A', color: '#fff', whiteSpace: 'nowrap' }}>Enviar convite</button>
+      <div style={{ ...css.card, padding: '20px 24px', marginBottom: 28 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#555', marginBottom: 16, textTransform: 'uppercase', letterSpacing: .5 }}>Convidar novo usuário</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10, color: '#555', marginBottom: 5, textTransform: 'uppercase', letterSpacing: .4 }}>E-mail</div>
+            <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
+              placeholder="usuario@email.com" style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: '#555', marginBottom: 5, textTransform: 'uppercase', letterSpacing: .4 }}>Perfil</div>
+            <select value={invRole} onChange={e => { setInvRole(e.target.value); setInvOp(''); }}
+              style={{ ...css.input, cursor: 'pointer', minWidth: 140 }}>
+              <option value="operadora">Operadora</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          {invRole === 'operadora' && (
+            <div>
+              <div style={{ fontSize: 10, color: '#555', marginBottom: 5, textTransform: 'uppercase', letterSpacing: .4 }}>Operadora</div>
+              <select value={invOp} onChange={e => setInvOp(e.target.value)}
+                style={{ ...css.input, cursor: 'pointer', minWidth: 160 }}>
+                <option value="">Selecionar...</option>
+                {ops.map((op, i) => <option key={i} value={op.name}>{op.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
-        {invMsg && <div style={{ fontSize: 12, color: invMsg.ok ? '#22c55e' : '#E8392A', marginTop: 10, fontFamily: "'JetBrains Mono',monospace" }}>{invMsg.text}</div>}
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={invite} disabled={invLoading}
+            style={{ ...css.btn, background: '#E8392A', color: '#fff', padding: '9px 20px' }}>
+            {invLoading ? 'Enviando...' : '✉ Enviar convite'}
+          </button>
+          {invMsg && <span style={{ fontSize: 12, color: invMsg.ok ? '#22c55e' : '#E8392A', fontFamily: "'JetBrains Mono',monospace" }}>{invMsg.text}</span>}
+        </div>
       </div>
 
       {/* Users list */}
       {loading ? <Spin /> : <div style={css.card}>
-        <div style={css.cHead}>Usuários ({users.length})</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr>
-            <th style={css.th}>E-mail</th>
-            <th style={css.th}>Nome</th>
-            <th style={css.th}>Operadora</th>
-            <th style={css.th}>Status</th>
-            <th style={{ ...css.th, textAlign: 'right' }}>Ações</th>
-          </tr></thead>
-          <tbody>
-            {users.map((u, i) => <tr key={i}>
-              <td style={{ padding: '10px 16px', color: '#f5f5f5', borderBottom: '1px solid #1a1a1a', fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{u.email}</td>
-              <td style={{ padding: '10px 16px', color: '#999', borderBottom: '1px solid #1a1a1a' }}>{u.name || '—'}</td>
-              <td style={{ padding: '10px 16px', borderBottom: '1px solid #1a1a1a' }}>
-                {u.role === 'master' ? <span style={{ color: '#E8392A', fontSize: 12, fontWeight: 600 }}>master</span>
-                  : reassigning === u.id ? (
-                    <select defaultValue={u.operadora_name} autoFocus
-                      onBlur={e => { setReassigning(null); }}
-                      onChange={e => reassign(u.id, e.target.value)}
-                      style={{ ...css.input, fontSize: 12, padding: '4px 8px' }}>
-                      {ops.map((op, oi) => <option key={oi} value={op.name}>{op.name}</option>)}
-                    </select>
-                  ) : (
-                    <span onClick={() => setReassigning(u.id)}
-                      style={{ fontSize: 12, color: '#999', cursor: 'pointer', borderBottom: '1px dashed #333' }}>
-                      {u.operadora_name || '—'}
-                    </span>
-                  )}
-              </td>
-              <td style={{ padding: '10px 16px', borderBottom: '1px solid #1a1a1a' }}>
-                {u.pending_invite
-                  ? <span style={{ fontSize: 11, color: '#f59e0b', fontFamily: "'JetBrains Mono',monospace" }}>convite pendente</span>
-                  : <span style={{ fontSize: 11, color: '#22c55e', fontFamily: "'JetBrains Mono',monospace" }}>ativo</span>}
-              </td>
-              <td style={{ padding: '10px 16px', textAlign: 'right', borderBottom: '1px solid #1a1a1a' }}>
-                {u.role !== 'master' && (
-                  <button onClick={() => deleteUser(u.id)} style={{ ...css.btn, background: 'rgba(232,57,42,0.08)', color: '#E8392A', fontSize: 11, padding: '4px 10px' }}>Remover</button>
-                )}
-              </td>
-            </tr>)}
-            {!users.length && <tr><td colSpan={5} style={{ padding: 20, color: '#555', textAlign: 'center' }}>Nenhum usuário cadastrado</td></tr>}
-          </tbody>
-        </table>
+        <div style={{ ...css.cHead, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Usuários cadastrados</span>
+          <span style={{ fontSize: 12, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{users.length} total · {users.filter(u => u.active).length} ativos</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
+            <thead><tr>
+              <th style={css.th}>Usuário</th>
+              <th style={css.th}>Perfil</th>
+              <th style={css.th}>Operadora</th>
+              <th style={css.th}>Status</th>
+              <th style={{ ...css.th, textAlign: 'right' }}>Ações</th>
+            </tr></thead>
+            <tbody>
+              {users.map((u, i) => (
+                <tr key={i} style={{ opacity: u.active ? 1 : 0.5 }}>
+                  <td style={tdStyle}>
+                    <div style={{ fontWeight: 600, color: '#f5f5f5', fontSize: 13 }}>{u.name || <span style={{ color: '#555', fontStyle: 'italic' }}>sem nome</span>}</div>
+                    <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace", marginTop: 1 }}>{u.email}</div>
+                  </td>
+                  <td style={tdStyle}><RoleBadge role={u.role} /></td>
+                  <td style={tdStyle}>
+                    {u.role === 'master' || u.role === 'admin'
+                      ? <span style={{ color: '#555', fontSize: 12 }}>—</span>
+                      : reassigning === u.id
+                        ? <select defaultValue={u.operadora_name} autoFocus
+                            onBlur={() => setReassigning(null)}
+                            onChange={e => reassign(u.id, e.target.value)}
+                            style={{ ...css.input, fontSize: 12, padding: '4px 8px' }}>
+                            {ops.map((op, oi) => <option key={oi} value={op.name}>{op.name}</option>)}
+                          </select>
+                        : <span onClick={() => setReassigning(u.id)}
+                            style={{ fontSize: 12, color: '#999', cursor: 'pointer', borderBottom: '1px dashed #333' }}>
+                            {u.operadora_name || '—'}
+                          </span>}
+                  </td>
+                  <td style={tdStyle}>
+                    {u.pending_invite
+                      ? <span style={{ fontSize: 11, color: '#f59e0b', fontFamily: "'JetBrains Mono',monospace" }}>convite pendente</span>
+                      : u.active
+                        ? <span style={{ fontSize: 11, color: '#22c55e', fontFamily: "'JetBrains Mono',monospace" }}>● ativo</span>
+                        : <span style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>○ inativo</span>}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    {u.role !== 'master' && <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button onClick={() => toggleActive(u.id)}
+                        style={{ ...css.btn, background: u.active ? 'rgba(255,255,255,0.04)' : 'rgba(34,197,94,0.1)', color: u.active ? '#555' : '#22c55e', border: `1px solid ${u.active ? '#1a1a1a' : 'rgba(34,197,94,0.2)'}`, fontSize: 11, padding: '4px 10px' }}>
+                        {u.active ? 'Desativar' : 'Ativar'}
+                      </button>
+                      <button onClick={() => deleteUser(u.id)}
+                        style={{ ...css.btn, background: 'rgba(232,57,42,0.08)', color: '#E8392A', fontSize: 11, padding: '4px 10px' }}>
+                        Excluir
+                      </button>
+                    </div>}
+                  </td>
+                </tr>
+              ))}
+              {!users.length && <tr><td colSpan={5} style={{ padding: 28, color: '#555', textAlign: 'center' }}>Nenhum usuário cadastrado</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// PROFILE PANEL (todos os usuários)
+// ═══════════════════════════════════════════
+function ProfilePanel({ user, onClose, onUpdated }) {
+  const [name, setName] = useState(user.name || '');
+  const [curPass, setCurPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [newPass2, setNewPass2] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (newPass && newPass !== newPass2) { setMsg({ ok: false, text: 'As senhas não coincidem' }); return; }
+    if (newPass && newPass.length < 6) { setMsg({ ok: false, text: 'Senha deve ter pelo menos 6 caracteres' }); return; }
+    setLoading(true); setMsg(null);
+    const data = await apiAuth.updateProfile(
+      name !== user.name ? name : undefined,
+      newPass ? curPass : undefined,
+      newPass || undefined,
+    );
+    setLoading(false);
+    if (data.ok) {
+      setMsg({ ok: true, text: '✓ Dados atualizados' });
+      setCurPass(''); setNewPass(''); setNewPass2('');
+      onUpdated({ ...user, name: name || user.name });
+    } else {
+      setMsg({ ok: false, text: data.error || 'Erro ao salvar' });
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 14, padding: '28px 32px', width: '100%', maxWidth: 440, boxShadow: '0 24px 80px rgba(0,0,0,.6)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Meu Perfil</div>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {user.email} <RoleBadge role={user.role} />
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+
+        <form onSubmit={save}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: .5 }}>Nome</label>
+            <input value={name} onChange={e => setName(e.target.value)} autoComplete="name"
+              style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} placeholder="Seu nome" />
+          </div>
+
+          <div style={{ borderTop: '1px solid #1a1a1a', paddingTop: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: '#555', fontWeight: 600, marginBottom: 14, textTransform: 'uppercase', letterSpacing: .5 }}>Alterar senha <span style={{ color: '#333', fontWeight: 400 }}>(opcional)</span></div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: .4 }}>Senha atual</label>
+              <input type="password" value={curPass} onChange={e => setCurPass(e.target.value)} autoComplete="current-password"
+                style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} placeholder="••••••••" />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: .4 }}>Nova senha</label>
+                <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} autoComplete="new-password"
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} placeholder="Mínimo 6" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: .4 }}>Confirmar</label>
+                <input type="password" value={newPass2} onChange={e => setNewPass2(e.target.value)} autoComplete="new-password"
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} placeholder="Repetir" />
+              </div>
+            </div>
+          </div>
+
+          {msg && <div style={{ fontSize: 12, color: msg.ok ? '#22c55e' : '#E8392A', marginBottom: 14, fontFamily: "'JetBrains Mono',monospace" }}>{msg.text}</div>}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="submit" disabled={loading}
+              style={{ ...css.btn, background: '#E8392A', color: '#fff', flex: 1, padding: '10px' }}>
+              {loading ? 'Salvando...' : 'Salvar alterações'}
+            </button>
+            <button type="button" onClick={onClose}
+              style={{ ...css.btn, background: '#141414', color: '#555', border: '1px solid #1a1a1a', padding: '10px 16px' }}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -873,6 +1025,7 @@ export default function App() {
   const [editingEmail, setEditingEmail] = useState(null);
   const [sendingReport, setSendingReport] = useState(false);
   const [reportMsg, setReportMsg] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
 
   // Check URL tokens (invite / reset) and session on mount
   useEffect(() => {
@@ -921,7 +1074,7 @@ export default function App() {
     fetch('/api/incorporadoras').then(r => r.json()).then(d => { if (Array.isArray(d)) setIncs(d); }).catch(() => {});
     reloadOps();
     // For operadora users, auto-select their operadora
-    if (authUser.role !== 'master' && authUser.operadora_name) {
+    if (authUser.role === 'operadora' && authUser.operadora_name) {
       setCurOp({ name: authUser.operadora_name, devs: [] });
     }
   }, [authUser]);
@@ -962,6 +1115,8 @@ export default function App() {
 
   const filtered = incs.filter(d => d.label?.toLowerCase().includes(search.toLowerCase())).slice(0, 25);
   const isMaster = authUser?.role === 'master';
+  const isAdmin = authUser?.role === 'admin';
+  const canManage = isMaster || isAdmin;
 
   // Auth loading spinner
   if (authLoading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}><Spin /></div>;
@@ -982,16 +1137,17 @@ export default function App() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{ width: 32, height: 32, background: '#E8392A', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, boxShadow: '0 0 16px rgba(232,57,42,0.12)' }}>DW</div>
         <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: -0.3 }}>Painel da Operadora</div>
-        {!isMaster && authUser.operadora_name && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{authUser.operadora_name}</div>}
+        {authUser.role === 'operadora' && authUser.operadora_name && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{authUser.operadora_name}</div>}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {isMaster && ['operadora', 'diretoria', 'config', 'usuarios'].map(v => (
+        {canManage && (isMaster ? ['operadora', 'diretoria', 'config', 'usuarios'] : ['operadora', 'diretoria', 'config']).map(v => (
           <button key={v} onClick={() => setView(v)} style={{ ...css.btn, background: view === v ? '#E8392A' : '#141414', color: view === v ? '#fff' : '#999', border: view === v ? 'none' : '1px solid #1a1a1a', textTransform: 'capitalize' }}>
             {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v}
           </button>
         ))}
         <div style={{ width: 1, height: 20, background: '#1a1a1a', margin: '0 4px' }} />
-        <div style={{ fontSize: 12, color: '#555', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{authUser.name || authUser.email}</div>
+        <RoleBadge role={authUser.role} />
+        <button onClick={() => setShowProfile(true)} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{authUser.name || authUser.email}</button>
         <button onClick={handleLogout} style={{ ...css.btn, background: '#141414', color: '#555', border: '1px solid #1a1a1a', fontSize: 11 }}>Sair</button>
       </div>
     </header>
@@ -999,8 +1155,8 @@ export default function App() {
     {/* USUARIOS — master only */}
     {view === 'usuarios' && isMaster && <UsersTab ops={ops} />}
 
-    {/* CONFIG — master only */}
-    {view === 'config' && isMaster && <div style={{ padding: '24px 28px', maxWidth: 600 }}>
+    {/* CONFIG — master or admin */}
+    {view === 'config' && canManage && <div style={{ padding: '24px 28px', maxWidth: 600 }}>
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Gerenciar Operadoras</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         <input value={newOp} onChange={e => setNewOp(e.target.value)} placeholder="Nome da operadora..." style={{ ...css.input, width: '100%' }} onKeyDown={e => e.key === 'Enter' && addOp()} />
@@ -1032,9 +1188,9 @@ export default function App() {
     </div>}
 
     {/* OPERADORA */}
-    {(view === 'operadora' || !isMaster) && <>
+    {(view === 'operadora' || !canManage) && <>
       <div style={{ padding: '14px 28px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        {isMaster && ops.length > 0 && <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', borderRadius: 8, padding: 3, border: '1px solid #1a1a1a' }}>
+        {canManage && ops.length > 0 && <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', borderRadius: 8, padding: 3, border: '1px solid #1a1a1a' }}>
           {ops.map((op, i) => <button key={i} onClick={() => { setCurOp(op); setSelDev(null); }} style={{ ...css.btn, padding: '6px 14px', background: curOp?.name === op.name ? '#E8392A' : 'transparent', color: curOp?.name === op.name ? '#fff' : '#555', fontSize: 12 }}>{op.name}</button>)}
         </div>}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1049,14 +1205,14 @@ export default function App() {
       : !curOp ? <div style={{ textAlign: 'center', padding: 60 }}>
         <div style={{ fontSize: 48, opacity: .3, marginBottom: 12 }}>⚙</div>
         <div style={{ fontSize: 15, fontWeight: 500, color: '#999' }}>
-          {isMaster ? 'Configure as operadoras primeiro' : 'Sua operadora ainda não tem carteira configurada'}
+          {canManage ? 'Configure as operadoras primeiro' : 'Sua operadora ainda não tem carteira configurada'}
         </div>
-        {isMaster && <button onClick={() => setView('config')} style={{ ...css.btn, background: '#E8392A', color: '#fff', marginTop: 12 }}>Ir para Config</button>}
+        {canManage && <button onClick={() => setView('config')} style={{ ...css.btn, background: '#E8392A', color: '#fff', marginTop: 12 }}>Ir para Config</button>}
       </div> : <div style={{ display: 'flex', minHeight: 'calc(100vh - 120px)' }}>
         {/* SIDEBAR */}
         <aside style={{ width: 280, borderRight: '1px solid #1a1a1a', flexShrink: 0, overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
           <div style={{ padding: '16px 16px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: '#555', letterSpacing: .5 }}>Carteira de {curOp.name}</div>
-          {isMaster && <div style={{ padding: '0 12px 12px', position: 'relative' }}>
+          {canManage && <div style={{ padding: '0 12px 12px', position: 'relative' }}>
             <input value={search} onChange={e => { setSearch(e.target.value); setShowDD(true); }} onFocus={() => setShowDD(true)}
               placeholder="+ Adicionar incorporadora..." style={{ ...css.input, width: '100%', fontSize: 12, padding: '8px 10px' }} />
             {showDD && search.length > 1 && filtered.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 12, right: 12, background: '#141414', border: '1px solid #1a1a1a', borderRadius: 8, maxHeight: 200, overflowY: 'auto', zIndex: 60, boxShadow: '0 8px 32px rgba(0,0,0,.5)' }}>
@@ -1070,27 +1226,27 @@ export default function App() {
             onMouseLeave={e => { if (selDev?.value !== d.value) e.currentTarget.style.background = 'transparent'; }}>
             <div onClick={() => setSelDev(d)} style={{ padding: '10px 16px 2px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, fontWeight: selDev?.value === d.value ? 600 : 400, color: selDev?.value === d.value ? '#f5f5f5' : '#999' }}>{d.label}</span>
-              {isMaster && <span onClick={e => { e.stopPropagation(); rmDev(d.value); }} style={{ fontSize: 11, color: '#555', cursor: 'pointer', padding: '2px 6px' }}
+              {canManage && <span onClick={e => { e.stopPropagation(); rmDev(d.value); }} style={{ fontSize: 11, color: '#555', cursor: 'pointer', padding: '2px 6px' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#E8392A'} onMouseLeave={e => e.currentTarget.style.color = '#555'}>✕</span>}
             </div>
             {/* Start date */}
             <div style={{ padding: '2px 16px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {isMaster && editingDate === d.value ? (
+              {canManage && editingDate === d.value ? (
                 <input type="date" defaultValue={d.startDate} autoFocus
                   onBlur={e => updateDevDate(d.value, e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && updateDevDate(d.value, e.target.value)}
                   style={{ ...css.input, fontSize: 10, padding: '3px 6px', width: 120, fontFamily: "'JetBrains Mono',monospace" }} />
               ) : (
-                <span onClick={e => { if (!isMaster) return; e.stopPropagation(); setEditingDate(d.value); }}
-                  style={{ fontSize: 10, color: '#444', fontFamily: "'JetBrains Mono',monospace", cursor: isMaster ? 'pointer' : 'default', borderBottom: isMaster ? '1px dashed #333' : 'none' }}
-                  title={isMaster ? "Clique para editar a data de início" : undefined}>
+                <span onClick={e => { if (!canManage) return; e.stopPropagation(); setEditingDate(d.value); }}
+                  style={{ fontSize: 10, color: '#444', fontFamily: "'JetBrains Mono',monospace", cursor: canManage ? 'pointer' : 'default', borderBottom: canManage ? '1px dashed #333' : 'none' }}
+                  title={canManage ? "Clique para editar a data de início" : undefined}>
                   Início: {d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : 'definir'}
                 </span>
               )}
             </div>
           </div>)}
           {!curOp.devs.length && <div style={{ padding: '20px 16px', fontSize: 12, color: '#555', textAlign: 'center' }}>
-            {isMaster ? 'Busque incorporadoras acima' : 'Nenhuma incorporadora na sua carteira'}
+            {canManage ? 'Busque incorporadoras acima' : 'Nenhuma incorporadora na sua carteira'}
           </div>}
         </aside>
 
@@ -1134,9 +1290,10 @@ export default function App() {
       </div>}
     </>}
 
-    {/* DIRETORIA — master only */}
-    {view === 'diretoria' && isMaster && <DirView operadoras={ops} />}
+    {/* DIRETORIA — master or admin */}
+    {view === 'diretoria' && canManage && <DirView operadoras={ops} />}
 
     {showDD && <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowDD(false)} />}
+    {showProfile && <ProfilePanel user={authUser} onClose={() => setShowProfile(false)} onUpdated={u => setAuthUser(prev => ({ ...prev, ...u }))} />}
   </div>;
 }

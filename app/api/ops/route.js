@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import sql, { initDb } from '../../lib/db';
+import { requireRole } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/ops → retorna todas as operadoras com suas carteiras
+// GET /api/ops → todas as operadoras com carteiras (qualquer autenticado)
 export async function GET() {
   try {
     await initDb();
@@ -24,10 +25,13 @@ export async function GET() {
   }
 }
 
-// POST /api/ops → cria operadora { name }
+// POST /api/ops → cria operadora — master ou admin
 export async function POST(req) {
   try {
     await initDb();
+    const me = await requireRole(req, 'master', 'admin');
+    if (!me) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
     const { name } = await req.json();
     if (!name?.trim()) return NextResponse.json({ error: 'name required' }, { status: 400 });
     await sql`INSERT INTO operadoras (name) VALUES (${name.trim()}) ON CONFLICT (name) DO NOTHING`;
@@ -37,9 +41,12 @@ export async function POST(req) {
   }
 }
 
-// PATCH /api/ops → atualiza e-mail da operadora { name, email }
+// PATCH /api/ops → atualiza e-mail da operadora — master ou admin
 export async function PATCH(req) {
   try {
+    const me = await requireRole(req, 'master', 'admin');
+    if (!me) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
     const { name, email } = await req.json();
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
     await sql`UPDATE operadoras SET email = ${email || null} WHERE name = ${name}`;
@@ -49,9 +56,12 @@ export async function PATCH(req) {
   }
 }
 
-// DELETE /api/ops?name=X → remove operadora e sua carteira
+// DELETE /api/ops?name=X → remove operadora — master ou admin
 export async function DELETE(req) {
   try {
+    const me = await requireRole(req, 'master', 'admin');
+    if (!me) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
     const { searchParams } = new URL(req.url);
     const name = searchParams.get('name');
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
