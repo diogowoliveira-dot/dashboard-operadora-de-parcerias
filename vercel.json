@@ -1,0 +1,8 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "env": {
+    "GRAFANA_URL": "https://dwv.grafana.net",
+    "GRAFANA_TOKEN": "@grafana-token"
+  }
+}
