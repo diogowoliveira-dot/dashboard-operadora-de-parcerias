@@ -19,7 +19,7 @@ export async function grafanaQuery(datasourceUid, datasourceType, rawSql, from =
         refId: 'A',
         datasource: { type: datasourceType, uid: datasourceUid },
         rawSql,
-        format: 1,
+        format: datasourceUid === DS_CLICKHOUSE ? 1 : 'table',
       }],
       from,
       to,
