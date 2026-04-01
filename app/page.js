@@ -516,9 +516,6 @@ function DirView({ operadoras }) {
 
     {ld ? <Spin /> : operadoras.map((op, oi) => {
       const devs = kpi[op.name] || [];
-      const tAc = devs.reduce((s, d) => s + sum3(d.ac, 'acessos'), 0);
-      const tLp = devs.reduce((s, d) => s + sum3(d.lp, 'total_links'), 0);
-      const tIm = devs.reduce((s, d) => s + sum3(d.im, 'imobiliarias'), 0);
       const onbRecords = onbMap[op.name] || [];
       const overdueCount = onbRecords.filter(r => r.overdue).length;
 
@@ -533,13 +530,6 @@ function DirView({ operadoras }) {
               ⚠ {overdueCount} onboarding{overdueCount > 1 ? 's' : ''} em atraso
             </div>
           )}
-        </div>
-
-        {/* KPI cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, marginBottom: 14 }}>
-          <MC label="Acessos (3 meses)" value={fmt(tAc)} color="#E8392A" />
-          <MC label="LPs geradas (3 meses)" value={fmt(tLp)} color="#3b82f6" />
-          <MC label="Imobiliárias (3 meses)" value={fmt(tIm)} color="#f59e0b" />
         </div>
 
         {/* Performance table */}
@@ -1235,12 +1225,30 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
           setSt(apiSt);
           try { localStorage.setItem(KEY, JSON.stringify(apiSt)); } catch(e) {}
         } else {
-          // No API record yet — keep localStorage data (or default)
+          // No API record yet — try localStorage and immediately push to API to sync
           try {
             const r = localStorage.getItem(KEY);
             if (r) {
               const parsed = JSON.parse(r);
-              setSt({ ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
+              const localSt = { ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } };
+              setSt(localSt);
+              // Auto-sync existing localStorage data to the API
+              if (operadoraName && devValue) {
+                fetch('/api/onboarding', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    op: operadoraName,
+                    dev: String(devValue),
+                    devLabel,
+                    checks: localSt.checks || {},
+                    diag: localSt.diag || {},
+                    client: localSt.client || {},
+                    tasks: localSt.tasks || [],
+                    notes: localSt.notes || '',
+                  }),
+                }).catch(() => {});
+              }
             } else {
               setSt(defaultSt);
             }
