@@ -1080,41 +1080,90 @@ const TRILHA_CLI = [
 // ═══════════════════════════════════════════
 // ONBOARDING TAB
 // ═══════════════════════════════════════════
-function OnboardingTab({ opName, devLabel = '', startDate = '' }) {
+function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '', startDate = '' }) {
   const KEY = `dwv_onboarding_${opName}`;
   const defaultSt = { client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING' }, diag: {}, checks: {}, tasks: [], notes: '', taskFilter: 'todas' };
 
   const [st, setSt] = useState(() => {
+    // Start with localStorage as fast cache while API loads
     try {
       const r = localStorage.getItem(KEY);
       if (r) {
         const parsed = JSON.parse(r);
-        // Pre-populate name/startDate from props if not saved yet
         return { ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } };
       }
     } catch(e) {}
     return defaultSt;
   });
+  const [apiLoading, setApiLoading] = useState(true);
+  const saveTimer = useRef(null);
 
+  // Load from API on mount / when incorporadora changes
   useEffect(() => {
-    try {
-      const r = localStorage.getItem(KEY);
-      if (r) {
-        const parsed = JSON.parse(r);
-        setSt({ ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
-      } else {
-        setSt(defaultSt);
-      }
-    } catch(e) { setSt(defaultSt); }
+    if (!operadoraName || !devValue) { setApiLoading(false); return; }
+    setApiLoading(true);
+    fetch(`/api/onboarding?op=${encodeURIComponent(operadoraName)}&dev=${encodeURIComponent(devValue)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.data) {
+          const apiSt = { ...defaultSt, ...json.data, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...json.data.client } };
+          setSt(apiSt);
+          try { localStorage.setItem(KEY, JSON.stringify(apiSt)); } catch(e) {}
+        } else {
+          // No API record yet — keep localStorage data (or default)
+          try {
+            const r = localStorage.getItem(KEY);
+            if (r) {
+              const parsed = JSON.parse(r);
+              setSt({ ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
+            } else {
+              setSt(defaultSt);
+            }
+          } catch(e) { setSt(defaultSt); }
+        }
+      })
+      .catch(() => {
+        // API unavailable — fall back to localStorage
+        try {
+          const r = localStorage.getItem(KEY);
+          if (r) {
+            const parsed = JSON.parse(r);
+            setSt({ ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
+          }
+        } catch(e) {}
+      })
+      .finally(() => setApiLoading(false));
   }, [opName]);
 
+  // Debounced save: localStorage (instant) + API (1 s debounce)
   const save = useCallback((upd) => {
     setSt(prev => {
       const next = typeof upd === 'function' ? upd(prev) : { ...prev, ...upd };
+      // Write-through to localStorage immediately
       try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(e) {}
+      // Debounce API save
+      if (operadoraName && devValue) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => {
+          fetch('/api/onboarding', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              op: operadoraName,
+              dev: String(devValue),
+              devLabel,
+              checks: next.checks || {},
+              diag: next.diag || {},
+              client: next.client || {},
+              tasks: next.tasks || [],
+              notes: next.notes || '',
+            }),
+          }).catch(() => {}); // silent — localStorage already saved
+        }, 1000);
+      }
       return next;
     });
-  }, [KEY]);
+  }, [KEY, operadoraName, devValue, devLabel]);
 
   const [showDiag, setShowDiag] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -1277,7 +1326,7 @@ function OnboardingTab({ opName, devLabel = '', startDate = '' }) {
   return (
     <div style={{ fontFamily: sans, background: '#080808', minHeight: 'calc(100vh - 60px)', color: '#f0ede8' }}>
       {/* ── TOP BAR ── */}
-      <div style={{ background: 'rgba(8,8,8,0.97)', borderBottom: '1px solid #161616', padding: '0 24px', display: 'flex', alignItems: 'center', height: 48, gap: 16, position: 'sticky', top: 60, zIndex: 90 }}>
+      <div style={{ background: 'rgba(8,8,8,0.97)', borderBottom: '1px solid #161616', padding: '0 24px', display: 'flex', alignItems: 'center', height: 48, gap: 16 }}>
         <span style={{ fontFamily: mono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', padding: '2px 9px', borderRadius: 2, background: ph.bg, color: ph.color, border: `1px solid ${ph.border}` }}>{st.client.fase}</span>
         {st.client.inicio && (
           <span style={{ fontFamily: mono, fontSize: 10, color: '#555', letterSpacing: 0.5 }}>
@@ -1829,7 +1878,7 @@ export default function App() {
             </div>
             {subView === 'dados'
               ? <IncView dev={selDev} dateFrom={dateFrom} dateTo={dateTo} startDate={selDev.startDate} />
-              : <OnboardingTab key={`${curOp?.name || authUser?.operadora_name}_${selDev.value}`} opName={`${curOp?.name || authUser?.operadora_name}_${selDev.value}`} devLabel={selDev.label} startDate={selDev.startDate} />
+              : <OnboardingTab key={`${curOp?.name || authUser?.operadora_name}_${selDev.value}`} opName={`${curOp?.name || authUser?.operadora_name}_${selDev.value}`} operadoraName={curOp?.name || authUser?.operadora_name || ''} devValue={String(selDev.value)} devLabel={selDev.label} startDate={selDev.startDate} />
             }
           </> : <div style={{ textAlign: 'center', padding: 60, color: '#555' }}>
             <div style={{ fontSize: 48, opacity: .3, marginBottom: 12 }}>📊</div>

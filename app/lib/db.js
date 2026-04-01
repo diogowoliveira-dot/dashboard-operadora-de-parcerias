@@ -48,4 +48,19 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS onboarding (
+      id SERIAL PRIMARY KEY,
+      operadora_name TEXT NOT NULL,
+      dev_value TEXT NOT NULL,
+      dev_label TEXT,
+      checks JSONB NOT NULL DEFAULT '{}',
+      diag JSONB NOT NULL DEFAULT '{}',
+      client_data JSONB NOT NULL DEFAULT '{}',
+      tasks JSONB NOT NULL DEFAULT '[]',
+      notes TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(operadora_name, dev_value)
+    )
+  `;
 }
