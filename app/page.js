@@ -1080,17 +1080,32 @@ const TRILHA_CLI = [
 // ═══════════════════════════════════════════
 // ONBOARDING TAB
 // ═══════════════════════════════════════════
-function OnboardingTab({ opName }) {
+function OnboardingTab({ opName, devLabel = '', startDate = '' }) {
   const KEY = `dwv_onboarding_${opName}`;
-  const defaultSt = { client: { operadora: '', inicio: '', fase: 'ONBOARDING' }, diag: {}, checks: {}, tasks: [], notes: '', taskFilter: 'todas' };
+  const defaultSt = { client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING' }, diag: {}, checks: {}, tasks: [], notes: '', taskFilter: 'todas' };
 
   const [st, setSt] = useState(() => {
-    try { const r = localStorage.getItem(KEY); if (r) return { ...defaultSt, ...JSON.parse(r) }; } catch(e) {}
+    try {
+      const r = localStorage.getItem(KEY);
+      if (r) {
+        const parsed = JSON.parse(r);
+        // Pre-populate name/startDate from props if not saved yet
+        return { ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } };
+      }
+    } catch(e) {}
     return defaultSt;
   });
 
   useEffect(() => {
-    try { const r = localStorage.getItem(KEY); setSt(r ? { ...defaultSt, ...JSON.parse(r) } : defaultSt); } catch(e) { setSt(defaultSt); }
+    try {
+      const r = localStorage.getItem(KEY);
+      if (r) {
+        const parsed = JSON.parse(r);
+        setSt({ ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
+      } else {
+        setSt(defaultSt);
+      }
+    } catch(e) { setSt(defaultSt); }
   }, [opName]);
 
   const save = useCallback((upd) => {
@@ -1547,6 +1562,7 @@ export default function App() {
   const [sendingReport, setSendingReport] = useState(false);
   const [reportMsg, setReportMsg] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [subView, setSubView] = useState('dados'); // 'dados' | 'onboarding'
 
   // Check URL tokens (invite / reset) and session on mount
   useEffect(() => {
@@ -1634,6 +1650,9 @@ export default function App() {
     await reloadOps();
   };
 
+  // Reset sub-view when the selected incorporadora changes
+  useEffect(() => { setSubView('dados'); }, [selDev?.value]);
+
   const filtered = incs.filter(d => d.label?.toLowerCase().includes(search.toLowerCase())).slice(0, 25);
   const isMaster = authUser?.role === 'master';
   const isAdmin = authUser?.role === 'admin';
@@ -1661,9 +1680,9 @@ export default function App() {
         {authUser.role === 'operadora' && authUser.operadora_name && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{authUser.operadora_name}</div>}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {(canManage ? (isMaster ? ['operadora', 'onboarding', 'diretoria', 'config', 'usuarios'] : ['operadora', 'onboarding', 'diretoria', 'config']) : ['operadora', 'onboarding']).map(v => (
+        {(canManage ? (isMaster ? ['operadora', 'diretoria', 'config', 'usuarios'] : ['operadora', 'diretoria', 'config']) : ['operadora']).map(v => (
           <button key={v} onClick={() => setView(v)} style={{ ...css.btn, background: view === v ? '#E8392A' : '#141414', color: view === v ? '#fff' : '#999', border: view === v ? 'none' : '1px solid #1a1a1a', textTransform: 'capitalize' }}>
-            {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v === 'onboarding' ? '🎯 Onboarding' : v}
+            {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v}
           </button>
         ))}
         <div style={{ width: 1, height: 20, background: '#1a1a1a', margin: '0 4px' }} />
@@ -1672,9 +1691,6 @@ export default function App() {
         <button onClick={handleLogout} style={{ ...css.btn, background: '#141414', color: '#555', border: '1px solid #1a1a1a', fontSize: 11 }}>Sair</button>
       </div>
     </header>
-
-    {/* ONBOARDING — todos os usuários */}
-    {view === 'onboarding' && <OnboardingTab opName={curOp?.name || authUser?.operadora_name || ''} />}
 
     {/* USUARIOS — master only */}
     {view === 'usuarios' && isMaster && <UsersTab ops={ops} />}
@@ -1795,17 +1811,26 @@ export default function App() {
             </button>
           </div>}
           {selDev ? <>
+            {/* Header: incorporadora name + sub-tabs + PDF button */}
             <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div style={{ padding: '6px 14px', background: 'rgba(232,57,42,0.07)', border: '1px solid rgba(232,57,42,0.2)', borderRadius: 20, fontSize: 13, fontWeight: 600, color: '#E8392A' }}>{selDev.label}</div>
               {selDev.startDate && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>Operando desde {new Date(selDev.startDate).toLocaleDateString('pt-BR')}</div>}
-              <button onClick={() => {
+              {/* Sub-tabs */}
+              <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', borderRadius: 8, padding: 3, border: '1px solid #1a1a1a' }}>
+                <button onClick={() => setSubView('dados')} style={{ ...css.btn, padding: '5px 14px', fontSize: 12, background: subView === 'dados' ? '#E8392A' : 'transparent', color: subView === 'dados' ? '#fff' : '#555', border: 'none' }}>📊 Dados</button>
+                <button onClick={() => setSubView('onboarding')} style={{ ...css.btn, padding: '5px 14px', fontSize: 12, background: subView === 'onboarding' ? '#E8392A' : 'transparent', color: subView === 'onboarding' ? '#fff' : '#555', border: 'none' }}>🎯 Onboarding</button>
+              </div>
+              {subView === 'dados' && <button onClick={() => {
                 const qs = new URLSearchParams({ op: curOp.name, dev: selDev.value, devLabel: selDev.label, ...(selDev.startDate ? { startDate: selDev.startDate } : {}) });
                 window.open(`/relatorio?${qs}`, '_blank');
               }} style={{ marginLeft: 'auto', padding: '6px 14px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 20, fontSize: 12, fontWeight: 600, color: '#3b82f6', cursor: 'pointer', fontFamily: 'inherit' }}>
                 📄 Relatório PDF
-              </button>
+              </button>}
             </div>
-            <IncView dev={selDev} dateFrom={dateFrom} dateTo={dateTo} startDate={selDev.startDate} />
+            {subView === 'dados'
+              ? <IncView dev={selDev} dateFrom={dateFrom} dateTo={dateTo} startDate={selDev.startDate} />
+              : <OnboardingTab key={`${curOp?.name || authUser?.operadora_name}_${selDev.value}`} opName={`${curOp?.name || authUser?.operadora_name}_${selDev.value}`} devLabel={selDev.label} startDate={selDev.startDate} />
+            }
           </> : <div style={{ textAlign: 'center', padding: 60, color: '#555' }}>
             <div style={{ fontSize: 48, opacity: .3, marginBottom: 12 }}>📊</div>
             <div style={{ fontSize: 15, fontWeight: 500, color: '#999' }}>Selecione uma incorporadora na lateral</div>
