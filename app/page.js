@@ -461,6 +461,7 @@ function IncView({ dev, dateFrom, dateTo, startDate }) {
 function DirView({ operadoras }) {
   const [ld, setLd] = useState(false);
   const [kpi, setKpi] = useState({});
+  const [onbMap, setOnbMap] = useState({}); // { [operadora_name]: record[] }
 
   const load = useCallback(async () => {
     setLd(true);
@@ -479,12 +480,28 @@ function DirView({ operadoras }) {
       }
     }
     setKpi(nd);
+
+    // Load onboarding summary
+    try {
+      const sumJson = await fetch('/api/onboarding/summary').then(r => r.json());
+      if (sumJson.records) {
+        const grouped = {};
+        for (const rec of sumJson.records) {
+          if (!grouped[rec.operadora_name]) grouped[rec.operadora_name] = [];
+          grouped[rec.operadora_name].push(rec);
+        }
+        setOnbMap(grouped);
+      }
+    } catch {}
+
     setLd(false);
   }, [operadoras]);
 
   useEffect(() => { if (operadoras.length) load(); }, []);
 
   const sum3 = (rows, k) => rows.slice(-3).reduce((s, r) => s + (Number(r[k]) || 0), 0);
+
+  const mono = "'JetBrains Mono',monospace";
 
   return <div style={{ padding: '24px 28px 60px' }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -502,19 +519,31 @@ function DirView({ operadoras }) {
       const tAc = devs.reduce((s, d) => s + sum3(d.ac, 'acessos'), 0);
       const tLp = devs.reduce((s, d) => s + sum3(d.lp, 'total_links'), 0);
       const tIm = devs.reduce((s, d) => s + sum3(d.im, 'imobiliarias'), 0);
+      const onbRecords = onbMap[op.name] || [];
+      const overdueCount = onbRecords.filter(r => r.overdue).length;
 
-      return <div key={oi} style={{ marginBottom: 32 }}>
+      return <div key={oi} style={{ marginBottom: 40 }}>
+        {/* Operadora header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(232,57,42,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#E8392A' }}>{op.name.charAt(0)}</div>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{op.name}</div>
-          <div style={{ fontSize: 12, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{op.devs.length} incorporadoras</div>
+          <div style={{ fontSize: 12, color: '#555', fontFamily: mono }}>{op.devs.length} incorporadoras</div>
+          {overdueCount > 0 && (
+            <div style={{ fontSize: 11, fontFamily: mono, padding: '2px 10px', borderRadius: 20, background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              ⚠ {overdueCount} onboarding{overdueCount > 1 ? 's' : ''} em atraso
+            </div>
+          )}
         </div>
+
+        {/* KPI cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, marginBottom: 14 }}>
           <MC label="Acessos (3 meses)" value={fmt(tAc)} color="#E8392A" />
           <MC label="LPs geradas (3 meses)" value={fmt(tLp)} color="#3b82f6" />
           <MC label="Imobiliárias (3 meses)" value={fmt(tIm)} color="#f59e0b" />
         </div>
-        <div style={css.card}>
+
+        {/* Performance table */}
+        <div style={{ ...css.card, marginBottom: 14 }}>
           <div style={css.cHead}>Incorporadoras na carteira</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr>
@@ -531,18 +560,114 @@ function DirView({ operadoras }) {
               const tr = aP > 0 ? ((a3 - aP) / aP * 100).toFixed(1) : null;
               return <tr key={di}>
                 <td style={{ padding: '10px 16px', color: '#f5f5f5', fontWeight: 600, borderBottom: '1px solid #1a1a1a' }}>{d.label}</td>
-                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono',monospace", color: '#E8392A', borderBottom: '1px solid #1a1a1a' }}>{fmt(a3)}</td>
-                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono',monospace", color: '#3b82f6', borderBottom: '1px solid #1a1a1a' }}>{fmt(sum3(d.lp, 'total_links'))}</td>
-                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono',monospace", color: '#f59e0b', borderBottom: '1px solid #1a1a1a' }}>{fmt(sum3(d.im, 'imobiliarias'))}</td>
-                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono',monospace", borderBottom: '1px solid #1a1a1a', color: tr && Number(tr) >= 0 ? '#22c55e' : tr ? '#E8392A' : '#555' }}>
+                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: mono, color: '#E8392A', borderBottom: '1px solid #1a1a1a' }}>{fmt(a3)}</td>
+                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: mono, color: '#3b82f6', borderBottom: '1px solid #1a1a1a' }}>{fmt(sum3(d.lp, 'total_links'))}</td>
+                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: mono, color: '#f59e0b', borderBottom: '1px solid #1a1a1a' }}>{fmt(sum3(d.im, 'imobiliarias'))}</td>
+                <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: mono, borderBottom: '1px solid #1a1a1a', color: tr && Number(tr) >= 0 ? '#22c55e' : tr ? '#E8392A' : '#555' }}>
                   {tr ? `${Number(tr) >= 0 ? '↑' : '↓'} ${tr}%` : '—'}
                 </td>
-                <td style={{ padding: '10px 16px', textAlign: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#555', borderBottom: '1px solid #1a1a1a' }}>
+                <td style={{ padding: '10px 16px', textAlign: 'center', fontFamily: mono, fontSize: 11, color: '#555', borderBottom: '1px solid #1a1a1a' }}>
                   {d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : '—'}
                 </td>
               </tr>;
             })}</tbody>
           </table>
+        </div>
+
+        {/* Onboarding panel */}
+        <div style={css.card}>
+          <div style={{ ...css.cHead, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>🎯 Onboarding por incorporadora</span>
+            <span style={{ fontSize: 11, fontFamily: mono, color: '#555' }}>{onbRecords.length}/{op.devs.length} com dados</span>
+          </div>
+
+          {op.devs.length === 0 && (
+            <div style={{ padding: '20px 16px', fontSize: 12, color: '#555', textAlign: 'center' }}>Nenhuma incorporadora na carteira</div>
+          )}
+
+          {op.devs.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr>
+                <th style={css.th}>Incorporadora</th>
+                <th style={{ ...css.th, textAlign: 'center' }}>Início onboarding</th>
+                <th style={{ ...css.th, textAlign: 'center' }}>Dias</th>
+                <th style={{ ...css.th, textAlign: 'center', width: 220 }}>Progresso</th>
+                <th style={{ ...css.th, textAlign: 'center' }}>Fase</th>
+                <th style={{ ...css.th, textAlign: 'center' }}>Status</th>
+              </tr></thead>
+              <tbody>{op.devs.map((d, di) => {
+                const rec = onbRecords.find(r => String(r.dev_value) === String(d.value));
+                const pct = rec?.pct ?? null;
+                const daysEl = rec?.daysElapsed ?? null;
+                const overdue = rec?.overdue ?? false;
+                const startDate = rec?.startDate ?? d.startDate ?? null;
+                const fase = rec?.fase ?? null;
+
+                // Bar color
+                const barColor = pct === 100 ? '#22c55e' : overdue ? '#ef4444' : '#E8392A';
+
+                // Phase pill colors
+                const phaseColors = {
+                  ONBOARDING: { bg: 'rgba(232,57,42,0.1)', color: '#E8392A' },
+                  ATIVO: { bg: 'rgba(34,197,94,0.1)', color: '#22c55e' },
+                  RISCO: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444' },
+                  PAUSADO: { bg: 'rgba(100,100,100,0.15)', color: '#888' },
+                };
+                const ph = fase ? (phaseColors[fase] || phaseColors.ONBOARDING) : null;
+
+                return <tr key={di}>
+                  <td style={{ padding: '12px 16px', color: '#f5f5f5', fontWeight: 600, borderBottom: '1px solid #1a1a1a' }}>{d.label}</td>
+
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontFamily: mono, fontSize: 11, color: '#777', borderBottom: '1px solid #1a1a1a' }}>
+                    {startDate ? new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR') : <span style={{ color: '#444' }}>—</span>}
+                  </td>
+
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontFamily: mono, fontSize: 12, borderBottom: '1px solid #1a1a1a',
+                    color: daysEl === null ? '#444' : daysEl > 30 ? '#ef4444' : daysEl > 20 ? '#f59e0b' : '#22c55e' }}>
+                    {daysEl !== null ? `${daysEl}d` : '—'}
+                  </td>
+
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
+                    {pct !== null ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#1a1a1a', overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: barColor, transition: 'width .4s' }} />
+                        </div>
+                        <span style={{ fontFamily: mono, fontSize: 11, color: barColor, minWidth: 32, textAlign: 'right' }}>{pct}%</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#1a1a1a' }} />
+                        <span style={{ fontFamily: mono, fontSize: 11, color: '#444', minWidth: 32, textAlign: 'right' }}>—</span>
+                      </div>
+                    )}
+                  </td>
+
+                  <td style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '1px solid #1a1a1a' }}>
+                    {fase && ph ? (
+                      <span style={{ fontSize: 10, fontFamily: mono, letterSpacing: 0.5, padding: '2px 8px', borderRadius: 3, background: ph.bg, color: ph.color }}>
+                        {fase}
+                      </span>
+                    ) : <span style={{ color: '#444', fontSize: 12 }}>—</span>}
+                  </td>
+
+                  <td style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '1px solid #1a1a1a' }}>
+                    {pct === 100 ? (
+                      <span style={{ fontSize: 11, fontFamily: mono, padding: '2px 8px', borderRadius: 3, background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>✓ Concluído</span>
+                    ) : overdue ? (
+                      <span style={{ fontSize: 11, fontFamily: mono, padding: '2px 8px', borderRadius: 3, background: 'rgba(239,68,68,0.12)', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: 4 }}>⚠ Em atraso</span>
+                    ) : daysEl !== null && daysEl > 20 ? (
+                      <span style={{ fontSize: 11, fontFamily: mono, padding: '2px 8px', borderRadius: 3, background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>⏱ Atenção</span>
+                    ) : pct !== null ? (
+                      <span style={{ fontSize: 11, fontFamily: mono, padding: '2px 8px', borderRadius: 3, background: 'rgba(232,57,42,0.08)', color: '#E8392A' }}>● Em andamento</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#444' }}>Não iniciado</span>
+                    )}
+                  </td>
+                </tr>;
+              })}</tbody>
+            </table>
+          )}
         </div>
       </div>;
     })}
