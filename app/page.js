@@ -541,8 +541,7 @@ function DirView({ operadoras }) {
       <div>
         <div style={{ fontSize: 18, fontWeight: 600 }}>Visão Diretoria</div>
         <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>Performance das operadoras e suas carteiras</div>
-        {onbErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>⚠ Erro onboarding: {onbErr}</div>}
-        {!onbErr && onbTotal !== null && <div style={{ fontSize: 11, color: '#555', marginTop: 4, fontFamily: "'JetBrains Mono',monospace" }}>{onbTotal} registro{onbTotal !== 1 ? 's' : ''} de onboarding no banco</div>}
+        {onbErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>⚠ Erro ao carregar onboarding: {onbErr}</div>}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={loadOnboarding} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a' }}>
@@ -613,9 +612,9 @@ function DirView({ operadoras }) {
             <span>🎯 Onboarding por incorporadora</span>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
               <span style={{ fontSize: 11, fontFamily: mono, color: onbRecords.length > 0 ? '#22c55e' : '#555' }}>{onbLd ? 'carregando...' : `${onbRecords.length}/${op.devs.length} com dados`}</span>
-              {!onbLd && onbRecords.length === 0 && onbTotal !== null && onbTotal > 0 && (
+              {!onbLd && onbRecords.length === 0 && op.devs.length > 0 && onbTotal !== null && onbTotal > 0 && (
                 <span style={{ fontSize: 10, fontFamily: mono, color: '#f59e0b' }}>
-                  ⚠ DB tem {onbTotal} reg. mas nenhum p/ "{op.name}" — verifique nome da operadora
+                  ⚠ Há registros no banco mas nenhum para "{op.name}"
                 </span>
               )}
             </div>
