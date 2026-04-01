@@ -1001,6 +1001,527 @@ function ProfilePanel({ user, onClose, onUpdated }) {
 }
 
 // ═══════════════════════════════════════════
+// ONBOARDING — DATA
+// ═══════════════════════════════════════════
+const TRILHA_DWV = [
+  { fase: 'Kick-off e Setup Inicial', tasks: [
+    { id:'d1', text:'Realizar reunião de kick-off com toda a equipe do cliente', note:'Garantir presença: diretor, gerente, executivos, marketing e secretaria de vendas' },
+    { id:'d2', text:'Mapear e documentar hierarquia de acessos', note:'Definir quem é master, gerencial e operacional' },
+    { id:'d3', text:'Criar usuários e configurar níveis de acesso na plataforma' },
+    { id:'d4', text:'Criar grupo de WhatsApp DWV + equipe do cliente', note:'Principal canal de comunicação durante o onboarding' },
+    { id:'d5', text:'Configurar integração dos WhatsApps Business dos executivos', note:'Somente WhatsApp Business — não pessoal', badge:'block', badgeText:'Bloqueante' },
+  ]},
+  { fase: 'Engenharia de Dados', tasks: [
+    { id:'d6', text:'Importar planilha de corretores para o CRM', note:'Formato mínimo: nome, telefone, e-mail, imobiliária', badge:'block', badgeText:'Bloqueante' },
+    { id:'d7', text:'Criar imobiliárias no sistema e vincular corretores' },
+    { id:'d8', text:'Classificar corretores em Ouro / Prata / Bronze', note:'Ouro = vendeu nos últimos 12m; Prata = engajado mas não vendeu; Bronze = inativo' },
+    { id:'d9', text:'Distribuir carteiras por executivo', note:'Critério: por região, por imobiliária, ou roleta automática para novos leads' },
+    { id:'d10', text:'Configurar Kanban com nomenclatura do cliente', note:'Sugestão: Diamante / Ouro / Prata / Bronze — ou adaptar ao vocabulário do cliente' },
+  ]},
+  { fase: 'Configuração de Produto', tasks: [
+    { id:'d11', text:'Fazer upload das tabelas de preço no sistema', note:'Verificar produtos em tabela zero — configurar acesso restrito antes de subir' },
+    { id:'d12', text:'Definir quais produtos entram em Tabela Zero e liberar apenas para Ouro', badge:'info', badgeText:'Atenção' },
+    { id:'d13', text:'Fazer upload de materiais: plantas, fotos, vídeos, apresentação e book comercial' },
+    { id:'d14', text:'Configurar espelho de vendas (disponível / reservado / vendido)' },
+    { id:'d15', text:'Verificar e ajustar integração com CV (ou desvincular se necessário)', note:'Desvincular quando unidades ainda não têm registro de incorporação' },
+    { id:'d16', text:'Validar tabela ao vivo com o cliente antes de liberar para corretores', badge:'block', badgeText:'Bloqueante' },
+  ]},
+  { fase: 'IA e Automação', tasks: [
+    { id:'d17', text:'Configurar IA de atendimento com FAQ do produto', note:'Cobrir: disponibilidade, prazo, pagamento, como agendar visita, como solicitar tabela' },
+    { id:'d18', text:'Testar fluxo completo: corretor pergunta → IA responde → escalonamento humano' },
+    { id:'d19', text:'Configurar integração Meta Ads → CRM (se cliente tiver tráfego pago)', note:'Necessário ter pessoa de marketing do lado do cliente' },
+    { id:'d20', text:'Configurar roleta de distribuição de leads ou definir regra manual' },
+  ]},
+  { fase: 'Primeiras Ativações', tasks: [
+    { id:'d21', text:'Criar primeiro evento ou webinar de produto', note:'Treinamento, apresentação de lançamento ou café com corretores' },
+    { id:'d22', text:'Gerar QR Codes para check-in: obras, decorado, stand de vendas, treinamentos' },
+    { id:'d23', text:'Disparo do primeiro WhatsApp segmentado por tier', note:'Ouro → acesso exclusivo / Prata → novidade / Bronze → prova social' },
+    { id:'d24', text:'Monitorar primeiros acessos, compartilhamentos e ações dos corretores' },
+    { id:'d25', text:'Identificar corretores da base já na plataforma DWV e priorizá-los' },
+  ]},
+  { fase: 'Relatório e Ajuste (Fim do Mês 1)', tasks: [
+    { id:'d26', text:'Apresentar relatório de performance do mês 1 ao diretor/gerente', note:'Incluir: TE atual, propostas, corretores ativados, imobiliárias integradas, acessos' },
+    { id:'d27', text:'Revisar carteiras se necessário (redistribuição por performance)' },
+    { id:'d28', text:'Ajustar comunicação por segmento com base nos resultados das primeiras campanhas' },
+    { id:'d29', text:'Definir metas de proposta para o mês 2' },
+    { id:'d30', text:'Avaliar viabilidade de campanha Meta para captação de corretores externos', note:'Indicado para regiões fora do litoral: Londrina, Curitiba, Campo Grande' },
+  ]},
+];
+
+const TRILHA_CLI = [
+  { fase: 'Cliente fornece — Setup', tasks: [
+    { id:'c1', text:'Planilha de corretores: nome, telefone, e-mail e imobiliária', note:'Excel ou Google Sheets. Mínimo: nome + telefone', badge:'block', badgeText:'Bloqueante' },
+    { id:'c2', text:'Lista de imobiliárias parceiras com classificação de prioridade', note:'Indicar meta (diamante), ouro, prata e bronze' },
+    { id:'c3', text:'Números de WhatsApp Business de cada executivo', note:'Devem ser WhatsApp Business, não pessoal', badge:'block', badgeText:'Bloqueante' },
+    { id:'c4', text:'Definir quem aprova tabela antes de subir (ponto de contato interno)' },
+    { id:'c5', text:'Informar critério de distribuição de carteiras', note:'Por região, por imobiliária, rodízio automático ou definição manual' },
+  ]},
+  { fase: 'Cliente fornece — Produto', tasks: [
+    { id:'c6', text:'Tabelas de preço atualizadas em formato editável', note:'Excel, Corel ou similar. Informar responsável por atualizar' },
+    { id:'c7', text:'Materiais: plantas, renders 3D, fotos de obra, vídeo de apresentação', badge:'info', badgeText:'Quanto antes' },
+    { id:'c8', text:'Book comercial / apresentação do empreendimento (PDF)' },
+    { id:'c9', text:'Fotos e vídeos de acompanhamento de obra (mensal)' },
+    { id:'c10', text:'Informar produtos em tabela zero e confirmar quais imobiliárias têm acesso', badge:'block', badgeText:'Crítico' },
+  ]},
+  { fase: 'Cliente fornece — Comunicação', tasks: [
+    { id:'c11', text:'Definir tom de voz e preferências de comunicação com corretores', note:'Formal ou informal? Restrições de conteúdo? Concorrentes a não citar?' },
+    { id:'c12', text:'Validar templates WhatsApp por tier (Ouro / Prata / Bronze) antes do primeiro disparo' },
+    { id:'c13', text:'Indicar contato de marketing interno para alinhamento de stories e campanhas', note:'Quem produz criativos? Tem agência? Qual prazo de resposta?' },
+    { id:'c14', text:'Fornecer acesso ao Meta Business (se tiver campanha de atração de corretor)' },
+  ]},
+  { fase: 'Cliente fornece — Ongoing', tasks: [
+    { id:'c15', text:'Informar vendas realizadas para manter espelho atualizado', note:'A cada venda: unidade, data, corretor responsável' },
+    { id:'c16', text:'Avisar de novos lançamentos ou mudanças de tabela com mínimo 3 dias de antecedência' },
+    { id:'c17', text:'Participar de reunião quinzenal de alinhamento (mínimo 30 min)' },
+    { id:'c18', text:'Validar e aprovar propostas enviadas por corretores dentro de 24h', note:'Propostas sem retorno em 24h afastam o corretor e travam o funil' },
+  ]},
+];
+
+// ═══════════════════════════════════════════
+// ONBOARDING TAB
+// ═══════════════════════════════════════════
+function OnboardingTab({ opName }) {
+  const KEY = `dwv_onboarding_${opName}`;
+  const defaultSt = { client: { operadora: '', inicio: '', fase: 'ONBOARDING' }, diag: {}, checks: {}, tasks: [], notes: '', taskFilter: 'todas' };
+
+  const [st, setSt] = useState(() => {
+    try { const r = localStorage.getItem(KEY); if (r) return { ...defaultSt, ...JSON.parse(r) }; } catch(e) {}
+    return defaultSt;
+  });
+
+  useEffect(() => {
+    try { const r = localStorage.getItem(KEY); setSt(r ? { ...defaultSt, ...JSON.parse(r) } : defaultSt); } catch(e) { setSt(defaultSt); }
+  }, [opName]);
+
+  const save = useCallback((upd) => {
+    setSt(prev => {
+      const next = typeof upd === 'function' ? upd(prev) : { ...prev, ...upd };
+      try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(e) {}
+      return next;
+    });
+  }, [KEY]);
+
+  const [showDiag, setShowDiag] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [showTask, setShowTask] = useState(false);
+  const [noteSaved, setNoteSaved] = useState('');
+  const noteTimer = useRef(null);
+
+  useEffect(() => {
+    const fn = (e) => {
+      if (e.key === 'Escape') { setShowDiag(false); setShowConfig(false); setShowTask(false); }
+    };
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, []);
+
+  // — computed
+  const allChecks = [...TRILHA_DWV, ...TRILHA_CLI].flatMap(f => f.tasks);
+  const doneCnt = allChecks.filter(t => st.checks[t.id]).length;
+  const pct = allChecks.length ? Math.round(doneCnt / allChecks.length * 100) : 0;
+  const dwvAll = TRILHA_DWV.flatMap(f => f.tasks);
+  const cliAll = TRILHA_CLI.flatMap(f => f.tasks);
+  const dwvDone = dwvAll.filter(t => st.checks[t.id]).length;
+  const cliDone = cliAll.filter(t => st.checks[t.id]).length;
+  const ptTotal = (st.tasks || []).length;
+  const ptDone = (st.tasks || []).filter(t => t.done).length;
+
+  const phColors = {
+    ONBOARDING: { bg: 'rgba(232,57,42,0.12)', color: '#E8392A', border: 'rgba(232,57,42,0.3)' },
+    ATIVO: { bg: 'rgba(34,197,94,0.12)', color: '#22c55e', border: 'rgba(34,197,94,0.3)' },
+    RISCO: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
+    PAUSADO: { bg: 'rgba(100,100,100,0.2)', color: '#888', border: '#333' },
+  };
+  const ph = phColors[st.client.fase] || phColors.ONBOARDING;
+
+  const mono = "'IBM Plex Mono', 'JetBrains Mono', monospace";
+  const sans = "'IBM Plex Sans', 'DM Sans', sans-serif";
+  const bebas = "'Bebas Neue', sans-serif";
+
+  const sortedTasks = [...(st.tasks || [])].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    const pm = { alta: 0, media: 1, baixa: 2 };
+    return (pm[a.prio] || 1) - (pm[b.prio] || 1);
+  });
+  const filteredTasks = sortedTasks.filter(t =>
+    st.taskFilter === 'abertas' ? !t.done : st.taskFilter === 'concluidas' ? t.done : true
+  );
+
+  const toggleCheck = (id) => save(p => ({ ...p, checks: { ...p.checks, [id]: !p.checks[id] } }));
+  const toggleFase = (id) => save(p => ({ ...p, [id]: p[id] !== false ? false : true }));
+  const isFaseOpen = (id) => st[id] !== false;
+
+  // — badge component (inline)
+  const Badge = ({ type, text }) => {
+    const bc = type === 'block' ? { bg: 'rgba(232,57,42,0.15)', color: '#E8392A', border: 'rgba(232,57,42,0.3)' }
+      : type === 'info' ? { bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' }
+      : { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: 'rgba(245,158,11,0.3)' };
+    return <span style={{ fontSize: 9, fontFamily: mono, letterSpacing: 1, textTransform: 'uppercase', padding: '2px 7px', borderRadius: 2, background: bc.bg, color: bc.color, border: `1px solid ${bc.border}`, flexShrink: 0 }}>{text}</span>;
+  };
+
+  // — task row (trilha)
+  const TaskRow = ({ task, isDwv }) => {
+    const checked = !!st.checks[task.id];
+    const accentColor = isDwv ? '#E8392A' : '#f59e0b';
+    return (
+      <div style={{ padding: '9px 14px', borderBottom: '1px solid #1a1a1a', opacity: checked ? 0.5 : 1, transition: 'opacity .2s' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div onClick={() => toggleCheck(task.id)} style={{ width: 15, height: 15, borderRadius: 3, border: `1.5px solid ${checked ? accentColor : '#333'}`, background: checked ? accentColor : 'transparent', flexShrink: 0, marginTop: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>
+            {checked && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontFamily: sans, color: checked ? '#555' : '#d4d4d4', textDecoration: checked ? 'line-through' : 'none', lineHeight: 1.4 }}>{task.text}</span>
+              {task.badge && <Badge type={task.badge} text={task.badgeText} />}
+            </div>
+            {task.note && <div style={{ fontSize: 11, color: '#555', fontFamily: sans, marginTop: 3, lineHeight: 1.4 }}>{task.note}</div>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // — fase column
+  const FaseCol = ({ fase, faseIdx, isDwv }) => {
+    if (!fase) return <div />;
+    const faseId = `${isDwv ? 'dwv' : 'cli'}_fase_${faseIdx}`;
+    const open = isFaseOpen(faseId);
+    const tasks = fase.tasks;
+    const done = tasks.filter(t => st.checks[t.id]).length;
+    const accentColor = isDwv ? '#E8392A' : '#f59e0b';
+    const hdrBg = isDwv ? '#111' : 'rgba(245,158,11,0.05)';
+    const hdrBorder = isDwv ? '#1e1e1e' : 'rgba(245,158,11,0.15)';
+    return (
+      <div style={{ border: `1px solid ${hdrBorder}`, borderRadius: 6, overflow: 'hidden' }}>
+        <div onClick={() => toggleFase(faseId)} style={{ background: hdrBg, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+          <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 600, color: accentColor, letterSpacing: 1 }}>F{faseIdx + 1}</span>
+          <span style={{ fontSize: 12, fontFamily: sans, fontWeight: 600, color: '#ccc', flex: 1 }}>{fase.fase}</span>
+          <span style={{ fontFamily: mono, fontSize: 10, color: done === tasks.length && tasks.length > 0 ? '#22c55e' : '#555' }}>{done}/{tasks.length}</span>
+          <span style={{ color: '#444', fontSize: 10 }}>{open ? '▾' : '▸'}</span>
+        </div>
+        {open && <div>{tasks.map(t => <TaskRow key={t.id} task={t} isDwv={isDwv} />)}</div>}
+      </div>
+    );
+  };
+
+  // — modal base
+  const Modal = ({ show, onClose, title, children, width = 520 }) => {
+    if (!show) return null;
+    return (
+      <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: '#161616', border: '1px solid #272727', borderRadius: 6, padding: '28px 32px', width, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ fontFamily: bebas, fontSize: 26, letterSpacing: 1, color: '#f0ede8', marginBottom: 20 }}>{title}</div>
+          {children}
+        </div>
+      </div>
+    );
+  };
+
+  const ModalField = ({ label, children }) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: '#666', marginBottom: 6 }}>{label}</div>
+      {children}
+    </div>
+  );
+  const mInput = { background: '#1e1e1e', border: '1px solid #272727', borderRadius: 4, padding: '9px 12px', color: '#f0ede8', fontFamily: sans, fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+  // — save diag modal
+  const saveDiag = (e) => {
+    e.preventDefault();
+    const f = e.target;
+    save(p => ({ ...p, diag: { ...p.diag,
+      te: f['f-te'].value, base: f['f-base'].value, ativos: f['f-ativos'].value,
+      ociosa: f['f-ociosa'].value, alvo: f['f-alvo'].value, vgv: f['f-vgv'].value,
+      propostas: f['f-propostas'].value, imob: f['f-imob'].value, ticket: f['f-ticket'].value,
+      diretor: f['f-diretor'].value, gerente: f['f-gerente'].value,
+      executivos: f['f-executivos'].value, marketing: f['f-marketing'].value,
+      produtos: f['f-produtos'].value, obs: f['f-obs'].value,
+    }}));
+    setShowDiag(false);
+  };
+
+  const saveConfig = (e) => {
+    e.preventDefault();
+    const f = e.target;
+    save(p => ({ ...p, client: { ...p.client, operadora: f['fc-operadora'].value, inicio: f['fc-inicio'].value, fase: f['fc-fase'].value } }));
+    setShowConfig(false);
+  };
+
+  const addTask = (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const titulo = f['ft-titulo'].value.trim();
+    if (!titulo) return;
+    const newTask = { id: Date.now().toString(), titulo, prio: f['ft-prio'].value, obs: f['ft-obs'].value, done: false, createdAt: new Date().toISOString() };
+    save(p => ({ ...p, tasks: [...(p.tasks || []), newTask] }));
+    setShowTask(false);
+  };
+
+  const d = st.diag || {};
+
+  return (
+    <div style={{ fontFamily: sans, background: '#080808', minHeight: 'calc(100vh - 60px)', color: '#f0ede8' }}>
+      {/* ── TOP BAR ── */}
+      <div style={{ background: 'rgba(8,8,8,0.97)', borderBottom: '1px solid #161616', padding: '0 24px', display: 'flex', alignItems: 'center', height: 48, gap: 16, position: 'sticky', top: 60, zIndex: 90 }}>
+        <span style={{ fontFamily: mono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', padding: '2px 9px', borderRadius: 2, background: ph.bg, color: ph.color, border: `1px solid ${ph.border}` }}>{st.client.fase}</span>
+        {st.client.inicio && (
+          <span style={{ fontFamily: mono, fontSize: 10, color: '#555', letterSpacing: 0.5 }}>
+            Início: {new Date(st.client.inicio + 'T12:00:00').toLocaleDateString('pt-BR')}
+            {' · '}
+            {Math.floor((Date.now() - new Date(st.client.inicio + 'T12:00:00').getTime()) / 86400000)}d
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowDiag(true)} style={{ background: '#161616', border: '1px solid #272727', borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontFamily: mono, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666', display: 'flex', alignItems: 'center', gap: 6 }}>📊 Diagnóstico</button>
+        <button onClick={() => setShowConfig(true)} style={{ background: '#161616', border: '1px solid #272727', borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontFamily: mono, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>⚙ Config</button>
+      </div>
+
+      {/* ── DIAGNÓSTICO BAR ── */}
+      <div style={{ background: '#0f0f0f', borderBottom: '1px solid #161616', padding: '10px 24px', display: 'flex', alignItems: 'center', overflowX: 'auto', gap: 0 }}>
+        {[
+          { id: 'd-te', label: 'TE Atual', val: d.te, color: '#E8392A' },
+          { id: 'd-base', label: 'Base total', val: d.base },
+          { id: 'd-ativos', label: 'Ativos', val: d.ativos, color: '#22c55e' },
+          { id: 'd-ociosa', label: 'Base ociosa', val: d.ociosa, color: '#f59e0b' },
+          { id: 'd-alvo', label: 'Alvo corretores', val: d.alvo },
+          { id: 'd-vgv', label: 'VGV alvo 12m', val: d.vgv },
+          { id: 'd-propostas', label: 'Propostas/mês', val: d.propostas },
+          { id: 'd-imob', label: 'Imobiliárias', val: d.imob },
+          { id: 'd-ticket', label: 'Ticket médio', val: d.ticket },
+        ].map((item, i, arr) => (
+          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', padding: '0 20px', borderRight: i < arr.length - 1 ? '1px solid #1e1e1e' : 'none', flexShrink: 0 }}>
+            <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1.5, textTransform: 'uppercase', color: '#666', marginBottom: 2 }}>{item.label}</span>
+            <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, color: item.color || '#f0ede8' }}>{item.val || '—'}</span>
+          </div>
+        ))}
+        <div style={{ marginLeft: 'auto', paddingLeft: 20, flexShrink: 0 }}>
+          <button onClick={() => setShowDiag(true)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontFamily: mono, fontSize: 11 }}>editar ✎</button>
+        </div>
+      </div>
+
+      {/* ── ORG PILLS ── */}
+      <div style={{ background: '#0f0f0f', borderBottom: '1px solid #161616', padding: '8px 24px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Diretor', val: d.diretor },
+          { label: 'Gerente', val: d.gerente },
+          { label: 'Executivos', val: d.executivos },
+          { label: 'Marketing', val: d.marketing },
+        ].map(({ label, val }) => (
+          <div key={label} style={{ background: '#1e1e1e', border: '1px solid #272727', borderRadius: 20, padding: '4px 12px', fontFamily: mono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>
+            {label}: <strong style={{ color: '#ccc' }}>{val || '—'}</strong>
+          </div>
+        ))}
+      </div>
+
+      {/* ── MAIN LAYOUT ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', minHeight: 'calc(100vh - 200px)' }}>
+        {/* LEFT — fases */}
+        <div style={{ borderRight: '1px solid #161616', padding: '20px 24px' }}>
+          {/* Progress */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontFamily: mono, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#555' }}>Progresso do Onboarding</span>
+                <span style={{ fontFamily: bebas, fontSize: 22, color: pct === 100 ? '#22c55e' : '#E8392A', letterSpacing: 1 }}>{pct}%</span>
+              </div>
+              <span style={{ fontFamily: mono, fontSize: 11, color: '#555' }}>{doneCnt} / {allChecks.length} tarefas</span>
+            </div>
+            <div style={{ height: 4, background: '#1e1e1e', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: pct === 100 ? '#22c55e' : '#E8392A', width: pct + '%', transition: 'width .4s', borderRadius: 2 }} />
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+            <div style={{ background: 'rgba(232,57,42,0.06)', border: '1px solid rgba(232,57,42,0.15)', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>⚙</span>
+              <div>
+                <div style={{ fontFamily: mono, fontSize: 9, color: '#E8392A', letterSpacing: 1, textTransform: 'uppercase' }}>DWV executa</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: '#ccc', marginTop: 1 }}>{dwvDone}/{dwvAll.length}</div>
+              </div>
+            </div>
+            <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>📋</span>
+              <div>
+                <div style={{ fontFamily: mono, fontSize: 9, color: '#f59e0b', letterSpacing: 1, textTransform: 'uppercase' }}>Cliente fornece</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: '#ccc', marginTop: 1 }}>{cliDone}/{cliAll.length}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Paired phases */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {Array.from({ length: Math.max(TRILHA_DWV.length, TRILHA_CLI.length) }, (_, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <FaseCol fase={TRILHA_DWV[i]} faseIdx={i} isDwv={true} />
+                <FaseCol fase={TRILHA_CLI[i]} faseIdx={i} isDwv={false} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* RIGHT — sidebar */}
+        <div style={{ padding: '20px 20px', overflowY: 'auto' }}>
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 20 }}>
+            {[{ label: 'Total', val: ptTotal, color: '#f0ede8' }, { label: 'Feitas', val: ptDone, color: '#22c55e' }, { label: 'Abertas', val: ptTotal - ptDone, color: '#E8392A' }].map(s => (
+              <div key={s.label} style={{ background: '#0f0f0f', border: '1px solid #1e1e1e', borderRadius: 6, padding: '10px 12px', textAlign: 'center' }}>
+                <div style={{ fontFamily: bebas, fontSize: 22, color: s.color, letterSpacing: 1 }}>{s.val}</div>
+                <div style={{ fontFamily: mono, fontSize: 9, color: '#555', letterSpacing: 1, textTransform: 'uppercase', marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tarefas Pontuais */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontFamily: mono, fontSize: 10, color: '#555', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>02 Tarefas Pontuais</div>
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+              {['todas', 'abertas', 'concluidas'].map(f => (
+                <button key={f} onClick={() => save(p => ({ ...p, taskFilter: f }))} style={{ fontFamily: mono, fontSize: 9, letterSpacing: 1, textTransform: 'capitalize', padding: '4px 10px', borderRadius: 3, border: 'none', cursor: 'pointer', background: st.taskFilter === f ? '#E8392A' : '#1e1e1e', color: st.taskFilter === f ? '#fff' : '#555', transition: 'all .15s' }}>
+                  {f === 'todas' ? 'Todas' : f === 'abertas' ? 'Abertas' : 'Feitas'}
+                </button>
+              ))}
+            </div>
+            {/* Task list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {filteredTasks.map(t => {
+                const prioColor = t.prio === 'alta' ? '#E8392A' : t.prio === 'media' ? '#f59e0b' : '#555';
+                const prioLabel = t.prio === 'alta' ? 'Alta' : t.prio === 'media' ? 'Média' : 'Baixa';
+                return (
+                  <div key={t.id} style={{ background: '#0f0f0f', border: '1px solid #1e1e1e', borderRadius: 5, padding: '10px 12px', opacity: t.done ? 0.4 : 1, transition: 'opacity .2s' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div onClick={() => save(p => ({ ...p, tasks: p.tasks.map(x => x.id === t.id ? { ...x, done: !x.done } : x) }))} style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${t.done ? '#E8392A' : '#333'}`, background: t.done ? '#E8392A' : 'transparent', flexShrink: 0, marginTop: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {t.done && <span style={{ color: '#fff', fontSize: 9 }}>✓</span>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontFamily: sans, color: t.done ? '#444' : '#ccc', textDecoration: t.done ? 'line-through' : 'none', marginBottom: 4 }}>{t.titulo}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: prioColor, flexShrink: 0 }} />
+                          <span style={{ fontFamily: mono, fontSize: 9, color: prioColor, letterSpacing: 0.5 }}>{prioLabel}</span>
+                        </div>
+                        {t.obs && <div style={{ fontSize: 11, color: '#444', fontFamily: sans, marginTop: 4 }}>{t.obs}</div>}
+                      </div>
+                      <button onClick={() => save(p => ({ ...p, tasks: p.tasks.filter(x => x.id !== t.id) }))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 2px', transition: 'color .15s' }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#E8392A'} onMouseLeave={e => e.currentTarget.style.color = '#333'}>×</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {filteredTasks.length === 0 && <div style={{ fontSize: 12, color: '#444', fontFamily: sans, textAlign: 'center', padding: '12px 0' }}>Nenhuma tarefa</div>}
+            <button onClick={() => setShowTask(true)} style={{ width: '100%', marginTop: 10, padding: '8px 12px', background: 'none', border: '1px dashed #272727', borderRadius: 5, cursor: 'pointer', fontFamily: mono, fontSize: 10, letterSpacing: 1, color: '#444', textTransform: 'uppercase', transition: 'all .2s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#E8392A'; e.currentTarget.style.color = '#E8392A'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#272727'; e.currentTarget.style.color = '#444'; }}>
+              + Nova tarefa
+            </button>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontFamily: mono, fontSize: 10, color: '#555', letterSpacing: 1.5, textTransform: 'uppercase' }}>Notas do cliente</div>
+              {noteSaved && <span style={{ fontFamily: mono, fontSize: 9, color: '#444' }}>salvo · {noteSaved}</span>}
+            </div>
+            <textarea
+              value={st.notes || ''}
+              onChange={e => {
+                const val = e.target.value;
+                save(p => ({ ...p, notes: val }));
+                clearTimeout(noteTimer.current);
+                noteTimer.current = setTimeout(() => setNoteSaved(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })), 400);
+              }}
+              placeholder="Anotações sobre o cliente, pendências, contexto..."
+              style={{ width: '100%', background: '#161616', border: '1px solid #272727', borderRadius: 5, padding: '10px 12px', color: '#ccc', fontFamily: sans, fontSize: 12, lineHeight: 1.6, resize: 'vertical', minHeight: 120, outline: 'none', boxSizing: 'border-box' }}
+              onFocus={e => e.target.style.borderColor = '#E8392A'}
+              onBlur={e => e.target.style.borderColor = '#272727'}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── MODAL DIAGNÓSTICO ── */}
+      <Modal show={showDiag} onClose={() => setShowDiag(false)} title="Diagnóstico Comercial" width={560}>
+        <form onSubmit={saveDiag}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            {[['TE Atual (%)', 'f-te', d.te], ['Total de Corretores na Base', 'f-base', d.base], ['Corretores Ativos', 'f-ativos', d.ativos], ['Base Ociosa', 'f-ociosa', d.ociosa], ['Alvo de Corretores Ativos', 'f-alvo', d.alvo], ['VGV Alvo — Próximos 12 meses', 'f-vgv', d.vgv], ['Propostas recebidas por mês', 'f-propostas', d.propostas], ['Imobiliárias Parceiras', 'f-imob', d.imob], ['Ticket Médio', 'f-ticket', d.ticket]].map(([label, name, val]) => (
+              <ModalField key={name} label={label}>
+                <input name={name} defaultValue={val || ''} style={mInput} onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+              </ModalField>
+            ))}
+          </div>
+          <div style={{ borderTop: '1px solid #272727', margin: '16px 0' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            {[['Diretor', 'f-diretor', d.diretor], ['Gerente de Parceria', 'f-gerente', d.gerente], ['Executivos de Parceria', 'f-executivos', d.executivos], ['Equipe de Marketing', 'f-marketing', d.marketing]].map(([label, name, val]) => (
+              <ModalField key={name} label={label}>
+                <input name={name} defaultValue={val || ''} style={mInput} onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+              </ModalField>
+            ))}
+          </div>
+          <ModalField label="Produtos ativos e fases">
+            <textarea name="f-produtos" defaultValue={d.produtos || ''} style={{ ...mInput, minHeight: 70, resize: 'vertical' }} onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+          </ModalField>
+          <ModalField label="Observações do diagnóstico">
+            <textarea name="f-obs" defaultValue={d.obs || ''} style={{ ...mInput, minHeight: 70, resize: 'vertical' }} onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+          </ModalField>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+            <button type="button" onClick={() => setShowDiag(false)} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 3, padding: '8px 18px', cursor: 'pointer', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>Cancelar</button>
+            <button type="submit" style={{ background: '#E8392A', border: 'none', borderRadius: 3, padding: '8px 18px', cursor: 'pointer', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#fff' }}>Salvar Diagnóstico</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── MODAL CONFIG ── */}
+      <Modal show={showConfig} onClose={() => setShowConfig(false)} title="Configurações">
+        <form onSubmit={saveConfig}>
+          <ModalField label="Operadora Responsável">
+            <input name="fc-operadora" defaultValue={st.client.operadora || ''} style={mInput} onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+          </ModalField>
+          <ModalField label="Data de Início do Onboarding">
+            <input type="date" name="fc-inicio" defaultValue={st.client.inicio || ''} style={{ ...mInput, colorScheme: 'dark' }} onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+          </ModalField>
+          <ModalField label="Fase Atual">
+            <select name="fc-fase" defaultValue={st.client.fase || 'ONBOARDING'} style={{ ...mInput, cursor: 'pointer' }}>
+              <option value="ONBOARDING">ONBOARDING</option>
+              <option value="ATIVO">ATIVO</option>
+              <option value="RISCO">RISCO</option>
+              <option value="PAUSADO">PAUSADO</option>
+            </select>
+          </ModalField>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+            <button type="button" onClick={() => setShowConfig(false)} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 3, padding: '8px 18px', cursor: 'pointer', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>Cancelar</button>
+            <button type="submit" style={{ background: '#E8392A', border: 'none', borderRadius: 3, padding: '8px 18px', cursor: 'pointer', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#fff' }}>Salvar</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── MODAL NOVA TAREFA ── */}
+      <Modal show={showTask} onClose={() => setShowTask(false)} title="Nova Tarefa">
+        <form onSubmit={addTask} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && e.target.tagName !== 'TEXTAREA' && (e.preventDefault(), e.currentTarget.requestSubmit())}>
+          <ModalField label="Título da Tarefa">
+            <input name="ft-titulo" autoFocus required style={mInput} placeholder="Descreva a tarefa..." onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+          </ModalField>
+          <ModalField label="Prioridade">
+            <select name="ft-prio" defaultValue="media" style={{ ...mInput, cursor: 'pointer' }}>
+              <option value="alta">Alta</option>
+              <option value="media">Média</option>
+              <option value="baixa">Baixa</option>
+            </select>
+          </ModalField>
+          <ModalField label="Observação (opcional)">
+            <textarea name="ft-obs" style={{ ...mInput, minHeight: 70, resize: 'vertical' }} placeholder="Contexto ou detalhes..." onFocus={e => e.target.style.borderColor = '#E8392A'} onBlur={e => e.target.style.borderColor = '#272727'} />
+          </ModalField>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+            <button type="button" onClick={() => setShowTask(false)} style={{ background: 'transparent', border: '1px solid #444', borderRadius: 3, padding: '8px 18px', cursor: 'pointer', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>Cancelar</button>
+            <button type="submit" style={{ background: '#E8392A', border: 'none', borderRadius: 3, padding: '8px 18px', cursor: 'pointer', fontFamily: mono, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#fff' }}>+ Adicionar</button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════
 export default function App() {
@@ -1140,9 +1661,9 @@ export default function App() {
         {authUser.role === 'operadora' && authUser.operadora_name && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{authUser.operadora_name}</div>}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {canManage && (isMaster ? ['operadora', 'diretoria', 'config', 'usuarios'] : ['operadora', 'diretoria', 'config']).map(v => (
+        {(canManage ? (isMaster ? ['operadora', 'onboarding', 'diretoria', 'config', 'usuarios'] : ['operadora', 'onboarding', 'diretoria', 'config']) : ['operadora', 'onboarding']).map(v => (
           <button key={v} onClick={() => setView(v)} style={{ ...css.btn, background: view === v ? '#E8392A' : '#141414', color: view === v ? '#fff' : '#999', border: view === v ? 'none' : '1px solid #1a1a1a', textTransform: 'capitalize' }}>
-            {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v}
+            {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v === 'onboarding' ? '🎯 Onboarding' : v}
           </button>
         ))}
         <div style={{ width: 1, height: 20, background: '#1a1a1a', margin: '0 4px' }} />
@@ -1151,6 +1672,9 @@ export default function App() {
         <button onClick={handleLogout} style={{ ...css.btn, background: '#141414', color: '#555', border: '1px solid #1a1a1a', fontSize: 11 }}>Sair</button>
       </div>
     </header>
+
+    {/* ONBOARDING — todos os usuários */}
+    {view === 'onboarding' && <OnboardingTab opName={curOp?.name || authUser?.operadora_name || ''} />}
 
     {/* USUARIOS — master only */}
     {view === 'usuarios' && isMaster && <UsersTab ops={ops} />}
@@ -1188,7 +1712,7 @@ export default function App() {
     </div>}
 
     {/* OPERADORA */}
-    {(view === 'operadora' || !canManage) && <>
+    {view === 'operadora' && <>
       <div style={{ padding: '14px 28px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         {canManage && ops.length > 0 && <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', borderRadius: 8, padding: 3, border: '1px solid #1a1a1a' }}>
           {ops.map((op, i) => <button key={i} onClick={() => { setCurOp(op); setSelDev(null); }} style={{ ...css.btn, padding: '6px 14px', background: curOp?.name === op.name ? '#E8392A' : 'transparent', color: curOp?.name === op.name ? '#fff' : '#555', fontSize: 12 }}>{op.name}</button>)}
