@@ -1225,14 +1225,19 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
           setSt(apiSt);
           try { localStorage.setItem(KEY, JSON.stringify(apiSt)); } catch(e) {}
         } else {
-          // No API record yet — try localStorage and immediately push to API to sync
+          // No API record yet — try new key, then fall back to old key (pre-refactor migration)
+          const OLD_KEY = `dwv_onboarding_${operadoraName}`; // key before per-incorporadora refactor
           try {
-            const r = localStorage.getItem(KEY);
-            if (r) {
-              const parsed = JSON.parse(r);
+            const newRaw = localStorage.getItem(KEY);
+            const oldRaw = !newRaw ? localStorage.getItem(OLD_KEY) : null;
+            const raw = newRaw || oldRaw;
+            if (raw) {
+              const parsed = JSON.parse(raw);
               const localSt = { ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } };
               setSt(localSt);
-              // Auto-sync existing localStorage data to the API
+              // Write to new key so future loads use correct key
+              try { localStorage.setItem(KEY, JSON.stringify(localSt)); } catch(e) {}
+              // Auto-sync to API immediately
               if (operadoraName && devValue) {
                 fetch('/api/onboarding', {
                   method: 'PUT',
