@@ -460,9 +460,28 @@ function IncView({ dev, dateFrom, dateTo, startDate }) {
 // ═══════════════════════════════════════════
 function DirView({ operadoras }) {
   const [ld, setLd] = useState(false);
+  const [onbLd, setOnbLd] = useState(false);
   const [kpi, setKpi] = useState({});
   const [onbMap, setOnbMap] = useState({}); // { [operadora_name]: record[] }
 
+  // Load onboarding summary independently (fast — DB only, no Grafana)
+  const loadOnboarding = useCallback(async () => {
+    setOnbLd(true);
+    try {
+      const sumJson = await fetch('/api/onboarding/summary').then(r => r.json());
+      if (sumJson.records) {
+        const grouped = {};
+        for (const rec of sumJson.records) {
+          if (!grouped[rec.operadora_name]) grouped[rec.operadora_name] = [];
+          grouped[rec.operadora_name].push(rec);
+        }
+        setOnbMap(grouped);
+      }
+    } catch {}
+    setOnbLd(false);
+  }, []);
+
+  // Load Grafana KPI data (slow — external API)
   const load = useCallback(async () => {
     setLd(true);
     const nd = {};
@@ -480,24 +499,15 @@ function DirView({ operadoras }) {
       }
     }
     setKpi(nd);
-
-    // Load onboarding summary
-    try {
-      const sumJson = await fetch('/api/onboarding/summary').then(r => r.json());
-      if (sumJson.records) {
-        const grouped = {};
-        for (const rec of sumJson.records) {
-          if (!grouped[rec.operadora_name]) grouped[rec.operadora_name] = [];
-          grouped[rec.operadora_name].push(rec);
-        }
-        setOnbMap(grouped);
-      }
-    } catch {}
-
     setLd(false);
   }, [operadoras]);
 
-  useEffect(() => { if (operadoras.length) load(); }, []);
+  // On mount: load onboarding immediately + Grafana in parallel
+  useEffect(() => {
+    if (!operadoras.length) return;
+    loadOnboarding();
+    load();
+  }, []);
 
   const sum3 = (rows, k) => rows.slice(-3).reduce((s, r) => s + (Number(r[k]) || 0), 0);
 
@@ -509,9 +519,14 @@ function DirView({ operadoras }) {
         <div style={{ fontSize: 18, fontWeight: 600 }}>Visão Diretoria</div>
         <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>Performance das operadoras e suas carteiras</div>
       </div>
-      <button onClick={load} style={{ ...css.btn, background: '#E8392A', color: '#fff' }}>
-        {ld ? 'Carregando...' : '↻ Atualizar'}
-      </button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={loadOnboarding} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a' }}>
+          {onbLd ? 'Carregando...' : '↻ Onboarding'}
+        </button>
+        <button onClick={() => { load(); loadOnboarding(); }} style={{ ...css.btn, background: '#E8392A', color: '#fff' }}>
+          {ld ? 'Carregando...' : '↻ Atualizar tudo'}
+        </button>
+      </div>
     </div>
 
     {ld ? <Spin /> : operadoras.map((op, oi) => {
@@ -568,7 +583,7 @@ function DirView({ operadoras }) {
         <div style={css.card}>
           <div style={{ ...css.cHead, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>🎯 Onboarding por incorporadora</span>
-            <span style={{ fontSize: 11, fontFamily: mono, color: '#555' }}>{onbRecords.length}/{op.devs.length} com dados</span>
+            <span style={{ fontSize: 11, fontFamily: mono, color: '#555' }}>{onbLd ? 'carregando...' : `${onbRecords.length}/${op.devs.length} com dados`}</span>
           </div>
 
           {op.devs.length === 0 && (
