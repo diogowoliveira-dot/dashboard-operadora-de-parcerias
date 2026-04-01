@@ -61,6 +61,9 @@ export async function PUT(req) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
+    const checkCount = Object.values(checks).filter(Boolean).length;
+    console.log('[ONB PUT]', { op, dev, devLabel, checkCount, tasksLen: tasks.length });
+
     await sql`
       INSERT INTO onboarding (operadora_name, dev_value, dev_label, checks, diag, client_data, tasks, notes, updated_at)
       VALUES (${op}, ${String(dev)}, ${devLabel || null}, ${JSON.stringify(checks)}, ${JSON.stringify(diag)}, ${JSON.stringify(client)}, ${JSON.stringify(tasks)}, ${notes}, NOW())
@@ -75,6 +78,7 @@ export async function PUT(req) {
         updated_at = NOW()
     `;
 
+    console.log('[ONB PUT] saved OK op=%s dev=%s checks=%d', op, dev, checkCount);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

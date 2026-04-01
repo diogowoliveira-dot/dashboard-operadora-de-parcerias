@@ -28,6 +28,10 @@ export async function GET(req) {
       ORDER BY o.operadora_name, o.dev_label
     `;
 
+    console.log('[ONB SUMMARY] rows=%d sample=%o', rows.length,
+      rows[0] ? { op: rows[0].operadora_name, dev: rows[0].dev_value, checksKeys: Object.keys(rows[0].checks || {}).length } : null
+    );
+
     const TOTAL_TASKS = 48; // 30 DWV + 18 CLI
 
     const records = rows.map(r => {
@@ -37,7 +41,11 @@ export async function GET(req) {
 
       // Prefer client-set inicio, fall back to carteira start_date
       const clientInicio = r.client_data?.inicio || null;
-      const startDate = clientInicio || (r.start_date ? r.start_date.toISOString().split('T')[0] : null);
+      // start_date from Neon HTTP driver is already a "YYYY-MM-DD" string, not a Date object
+      const rawStart = r.start_date
+        ? (typeof r.start_date === 'string' ? r.start_date.slice(0, 10) : r.start_date.toISOString().slice(0, 10))
+        : null;
+      const startDate = clientInicio || rawStart;
       const daysElapsed = startDate
         ? Math.floor((Date.now() - new Date(startDate + 'T12:00:00').getTime()) / 86400000)
         : null;
