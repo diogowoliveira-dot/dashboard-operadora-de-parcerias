@@ -514,12 +514,20 @@ function DirView({ operadoras }) {
     setLd(false);
   }, [operadoras]);
 
-  // On mount: load onboarding immediately + Grafana in parallel
+  // Load onboarding from DB on mount (independent of Grafana / operadoras prop).
+  // Separate effect so it fires immediately even if operadoras starts empty.
   useEffect(() => {
-    if (!operadoras.length) return;
     loadOnboarding();
-    load();
   }, []);
+
+  // Load Grafana KPI data once operadoras becomes non-empty.
+  // Using operadoras.length (not []) so we retry if DirView mounts before reloadOps finishes.
+  const didGrafanaLoad = useRef(false);
+  useEffect(() => {
+    if (!operadoras.length || didGrafanaLoad.current) return;
+    didGrafanaLoad.current = true;
+    load();
+  }, [operadoras.length]);
 
   const sum3 = (rows, k) => rows.slice(-3).reduce((s, r) => s + (Number(r[k]) || 0), 0);
 
