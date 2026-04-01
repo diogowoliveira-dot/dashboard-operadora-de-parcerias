@@ -480,10 +480,13 @@ function DirView({ operadoras }) {
         setOnbTotal(sumJson.records.length);
         const grouped = {};
         for (const rec of sumJson.records) {
-          if (!grouped[rec.operadora_name]) grouped[rec.operadora_name] = [];
-          grouped[rec.operadora_name].push(rec);
+          // Normalize key: trim + lowercase comparison handled server-side via canonical_name.
+          // Also build a lowercase-keyed lookup so DirView can find by normalized op.name.
+          const key = rec.operadora_name; // already canonical (from operadoras table) after fix
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(rec);
         }
-        console.log('[DirView] onbMap keys:', Object.keys(grouped));
+        console.log('[DirView] onbMap keys:', Object.keys(grouped), '| operadoras will match against these');
         setOnbMap(grouped);
       }
     } catch(e) {
@@ -553,7 +556,10 @@ function DirView({ operadoras }) {
 
     {ld ? <Spin /> : operadoras.map((op, oi) => {
       const devs = kpi[op.name] || [];
-      const onbRecords = onbMap[op.name] || [];
+      // Lookup with exact match first, then case-insensitive fallback to handle any name mismatch
+      const onbRecords = onbMap[op.name]
+        || onbMap[Object.keys(onbMap).find(k => k.toLowerCase().trim() === op.name.toLowerCase().trim())]
+        || [];
       const overdueCount = onbRecords.filter(r => r.overdue).length;
 
       return <div key={oi} style={{ marginBottom: 40 }}>
@@ -631,7 +637,10 @@ function DirView({ operadoras }) {
               </tr></thead>
               <tbody>{op.devs.map((d, di) => {
                 const rec = onbRecords.find(r => String(r.dev_value) === String(d.value));
-                const pct = rec?.pct ?? null;
+                // rec exists but pct=0 means "Em andamento 0%", not "Não iniciado"
+                // null pct means no record at all → "Não iniciado"
+                const hasRecord = rec !== undefined;
+                const pct = hasRecord ? (rec.pct ?? 0) : null;
                 const daysEl = rec?.daysElapsed ?? null;
                 const overdue = rec?.overdue ?? false;
                 const startDate = rec?.startDate ?? d.startDate ?? null;
