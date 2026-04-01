@@ -461,23 +461,35 @@ function IncView({ dev, dateFrom, dateTo, startDate }) {
 function DirView({ operadoras }) {
   const [ld, setLd] = useState(false);
   const [onbLd, setOnbLd] = useState(false);
+  const [onbErr, setOnbErr] = useState(null);
+  const [onbTotal, setOnbTotal] = useState(null); // total records returned by summary
   const [kpi, setKpi] = useState({});
   const [onbMap, setOnbMap] = useState({}); // { [operadora_name]: record[] }
 
   // Load onboarding summary independently (fast — DB only, no Grafana)
   const loadOnboarding = useCallback(async () => {
     setOnbLd(true);
+    setOnbErr(null);
     try {
-      const sumJson = await fetch('/api/onboarding/summary').then(r => r.json());
-      if (sumJson.records) {
+      const res = await fetch('/api/onboarding/summary');
+      const sumJson = await res.json();
+      console.log('[DirView] summary status=%d records=%d err=%s', res.status, sumJson.records?.length ?? -1, sumJson.error || '');
+      if (sumJson.error) {
+        setOnbErr(sumJson.error);
+      } else if (Array.isArray(sumJson.records)) {
+        setOnbTotal(sumJson.records.length);
         const grouped = {};
         for (const rec of sumJson.records) {
           if (!grouped[rec.operadora_name]) grouped[rec.operadora_name] = [];
           grouped[rec.operadora_name].push(rec);
         }
+        console.log('[DirView] onbMap keys:', Object.keys(grouped));
         setOnbMap(grouped);
       }
-    } catch {}
+    } catch(e) {
+      console.error('[DirView] loadOnboarding error:', e);
+      setOnbErr(e.message);
+    }
     setOnbLd(false);
   }, []);
 
@@ -518,6 +530,8 @@ function DirView({ operadoras }) {
       <div>
         <div style={{ fontSize: 18, fontWeight: 600 }}>Visão Diretoria</div>
         <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>Performance das operadoras e suas carteiras</div>
+        {onbErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>⚠ Erro onboarding: {onbErr}</div>}
+        {!onbErr && onbTotal !== null && <div style={{ fontSize: 11, color: '#555', marginTop: 4, fontFamily: "'JetBrains Mono',monospace" }}>{onbTotal} registro{onbTotal !== 1 ? 's' : ''} de onboarding no banco</div>}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={loadOnboarding} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a' }}>
@@ -583,7 +597,14 @@ function DirView({ operadoras }) {
         <div style={css.card}>
           <div style={{ ...css.cHead, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>🎯 Onboarding por incorporadora</span>
-            <span style={{ fontSize: 11, fontFamily: mono, color: '#555' }}>{onbLd ? 'carregando...' : `${onbRecords.length}/${op.devs.length} com dados`}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              <span style={{ fontSize: 11, fontFamily: mono, color: onbRecords.length > 0 ? '#22c55e' : '#555' }}>{onbLd ? 'carregando...' : `${onbRecords.length}/${op.devs.length} com dados`}</span>
+              {!onbLd && onbRecords.length === 0 && onbTotal !== null && onbTotal > 0 && (
+                <span style={{ fontSize: 10, fontFamily: mono, color: '#f59e0b' }}>
+                  ⚠ DB tem {onbTotal} reg. mas nenhum p/ "{op.name}" — verifique nome da operadora
+                </span>
+              )}
+            </div>
           </div>
 
           {op.devs.length === 0 && (
