@@ -1325,35 +1325,61 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
       .finally(() => setApiLoading(false));
   }, [opName]);
 
+  // Helper: monta payload para API
+  const buildPayload = useCallback((s) => ({
+    op: operadoraName,
+    dev: String(devValue),
+    devLabel,
+    checks: s.checks || {},
+    diag: s.diag || {},
+    client: s.client || {},
+    tasks: s.tasks || [],
+    notes: s.notes || '',
+  }), [operadoraName, devValue, devLabel]);
+
+  // Helper: envia para API com keepalive (funciona mesmo no beforeunload)
+  const flushToApi = useCallback((payload) => {
+    return fetch('/api/onboarding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true, // garante envio mesmo ao fechar aba
+    }).catch(() => {}); // localStorage já garantiu os dados localmente
+  }, []);
+
   // Debounced save: localStorage (instant) + API (1 s debounce)
   const save = useCallback((upd) => {
     setSt(prev => {
       const next = typeof upd === 'function' ? upd(prev) : { ...prev, ...upd };
-      // Write-through to localStorage immediately
-      try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(e) {}
+      // Write-through to localStorage imediatamente
+      try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(e) {
+        console.warn('[ONB] localStorage write failed:', e?.name);
+      }
       // Debounce API save
       if (operadoraName && devValue) {
         clearTimeout(saveTimer.current);
-        saveTimer.current = setTimeout(() => {
-          fetch('/api/onboarding', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              op: operadoraName,
-              dev: String(devValue),
-              devLabel,
-              checks: next.checks || {},
-              diag: next.diag || {},
-              client: next.client || {},
-              tasks: next.tasks || [],
-              notes: next.notes || '',
-            }),
-          }).catch(() => {}); // silent — localStorage already saved
-        }, 1000);
+        saveTimer.current = setTimeout(() => flushToApi(buildPayload(next)), 1000);
       }
       return next;
     });
-  }, [KEY, operadoraName, devValue, devLabel]);
+  }, [KEY, operadoraName, devValue, buildPayload, flushToApi]);
+
+  // Force-save antes do usuário fechar a aba (evita perda de dados)
+  useEffect(() => {
+    if (!operadoraName || !devValue) return;
+    const handleUnload = () => {
+      if (saveTimer.current) {
+        // Timer pendente = dados não foram para API ainda → força envio síncrono
+        clearTimeout(saveTimer.current);
+        const payload = buildPayload(
+          JSON.parse(localStorage.getItem(KEY) || '{}')
+        );
+        flushToApi(payload);
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [KEY, operadoraName, devValue, buildPayload, flushToApi]);
 
   const [showDiag, setShowDiag] = useState(false);
   const [showConfig, setShowConfig] = useState(false);

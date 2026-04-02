@@ -12,6 +12,18 @@ export async function GET(request) {
   const dateFrom = searchParams.get('dateFrom');
   const dateTo = searchParams.get('dateTo');
 
+  // Validação estrita de inputs para evitar SQL injection
+  if (devId && !/^\d+$/.test(devId)) {
+    return NextResponse.json({ error: 'devId inválido' }, { status: 400 });
+  }
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/;
+  if (dateFrom && !ISO_DATE.test(dateFrom)) {
+    return NextResponse.json({ error: 'dateFrom inválido' }, { status: 400 });
+  }
+  if (dateTo && !ISO_DATE.test(dateTo)) {
+    return NextResponse.json({ error: 'dateTo inválido' }, { status: 400 });
+  }
+
   try {
     let result;
 

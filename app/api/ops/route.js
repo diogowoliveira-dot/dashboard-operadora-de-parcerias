@@ -4,10 +4,12 @@ import { requireRole } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/ops → todas as operadoras com carteiras (qualquer autenticado)
-export async function GET() {
+// GET /api/ops → todas as operadoras com carteiras (requer autenticação)
+export async function GET(req) {
   try {
     await initDb();
+    const me = await requireRole(req, 'master', 'admin', 'operadora');
+    if (!me) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     const operadoras = await sql`SELECT name, email FROM operadoras ORDER BY created_at ASC`;
     const carteira = await sql`SELECT operadora_name, dev_value, dev_label, start_date::text FROM carteira ORDER BY created_at ASC`;
 
