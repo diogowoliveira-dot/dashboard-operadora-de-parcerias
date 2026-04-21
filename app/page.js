@@ -148,7 +148,7 @@ function BeforeAfter({ startDate, antesLabel, depoisLabel, items }) {
   return <div style={{ ...css.card, marginBottom: 14, background: '#080808' }}>
     <div style={{ ...css.cHead, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(232,57,42,0.03)' }}>
       <span>📐 Antes vs Depois da Operação</span>
-      <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: '#555' }}>Marco: {new Date(startDate).toLocaleDateString('pt-BR')}</span>
+      <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: '#555' }}>Marco: {new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 0 }}>
       {items.map((item, i) => {
@@ -599,7 +599,7 @@ function DirView({ operadoras }) {
                   {tr ? `${Number(tr) >= 0 ? '↑' : '↓'} ${tr}%` : '—'}
                 </td>
                 <td style={{ padding: '10px 16px', textAlign: 'center', fontFamily: mono, fontSize: 11, color: '#555', borderBottom: '1px solid #1a1a1a' }}>
-                  {d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : '—'}
+                  {d.startDate ? new Date(d.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
                 </td>
               </tr>;
             })}</tbody>
@@ -2090,7 +2090,7 @@ export default function App() {
                 <span onClick={e => { if (!canEditDate) return; e.stopPropagation(); setEditingDate(d.value); }}
                   style={{ fontSize: 10, color: '#444', fontFamily: "'JetBrains Mono',monospace", cursor: canEditDate ? 'pointer' : 'default', borderBottom: canEditDate ? '1px dashed #333' : 'none' }}
                   title={canEditDate ? "Clique para editar a data de início" : undefined}>
-                  Início: {d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : 'definir'}
+                  Início: {d.startDate ? new Date(d.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'definir'}
                 </span>
               )}
             </div>
@@ -2124,7 +2124,7 @@ export default function App() {
             {/* Header: incorporadora name + sub-tabs + PDF button */}
             <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div style={{ padding: '6px 14px', background: 'rgba(232,57,42,0.07)', border: '1px solid rgba(232,57,42,0.2)', borderRadius: 20, fontSize: 13, fontWeight: 600, color: '#E8392A' }}>{selDev.label}</div>
-              {selDev.startDate && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>Operando desde {new Date(selDev.startDate).toLocaleDateString('pt-BR')}</div>}
+              {selDev.startDate && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>Operando desde {new Date(selDev.startDate + 'T12:00:00').toLocaleDateString('pt-BR')}</div>}
               {/* Sub-tabs */}
               <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', borderRadius: 8, padding: 3, border: '1px solid #1a1a1a' }}>
                 <button onClick={() => setSubView('dados')} style={{ ...css.btn, padding: '5px 14px', fontSize: 12, background: subView === 'dados' ? '#E8392A' : 'transparent', color: subView === 'dados' ? '#fff' : '#555', border: 'none' }}>📊 Dados</button>
