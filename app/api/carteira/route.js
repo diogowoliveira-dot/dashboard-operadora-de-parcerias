@@ -25,15 +25,19 @@ export async function POST(req) {
   }
 }
 
-// PATCH /api/carteira → atualiza data de início — master ou admin
+// PATCH /api/carteira → atualiza data de início — master, admin ou operadora (só a própria carteira)
 export async function PATCH(req) {
   try {
-    const me = await requireRole(req, 'master', 'admin');
+    const me = await requireRole(req, 'master', 'admin', 'operadora');
     if (!me) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     const { operadora_name, dev_value, start_date } = await req.json();
     if (!operadora_name || !dev_value || !start_date)
       return NextResponse.json({ error: 'campos obrigatórios faltando' }, { status: 400 });
+
+    // Operadoras só podem editar a própria carteira
+    if (me.role === 'operadora' && me.operadora_name !== operadora_name)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     await sql`
       UPDATE carteira SET start_date = ${start_date}

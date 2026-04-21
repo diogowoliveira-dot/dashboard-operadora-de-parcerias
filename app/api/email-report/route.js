@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import sql, { initDb } from '../../lib/db';
 import { grafanaQuery, DS_CLICKHOUSE, DS_POSTGRES } from '../../lib/grafana';
 import { sendEmail } from '../../lib/email';
+import { requireRole } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -188,9 +189,16 @@ function buildHtml(operadoraName, antesLabel, depoisLabel, devs) {
 export async function GET(req) {
   try {
     await initDb();
+    const me = await requireRole(req, 'master', 'admin', 'operadora');
+    if (!me) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const { searchParams } = new URL(req.url);
     const operadora_name = searchParams.get('operadora_name');
     if (!operadora_name) return NextResponse.json({ error: 'operadora_name required' }, { status: 400 });
+
+    // Operadora só pode ver os próprios dados
+    if (me.role === 'operadora' && me.operadora_name !== operadora_name)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     const carteira = await sql`
       SELECT dev_value, dev_label, start_date::text FROM carteira
@@ -224,8 +232,15 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     await initDb();
+    const me = await requireRole(req, 'master', 'admin', 'operadora');
+    if (!me) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
     const { operadora_name } = await req.json();
     if (!operadora_name) return NextResponse.json({ error: 'operadora_name required' }, { status: 400 });
+
+    // Operadora só pode disparar o relatório da própria operadora
+    if (me.role === 'operadora' && me.operadora_name !== operadora_name)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     const [opRows, carteira] = await Promise.all([
       sql`SELECT name, email FROM operadoras WHERE name = ${operadora_name}`,

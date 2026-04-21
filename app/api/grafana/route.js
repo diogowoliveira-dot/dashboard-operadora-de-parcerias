@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { grafanaQuery, DS_CLICKHOUSE, DS_POSTGRES } from '../../lib/grafana';
+import { requireRole } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
+  const me = await requireRole(request, 'master', 'admin', 'operadora');
+  if (!me) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
   const devId = searchParams.get('devId');

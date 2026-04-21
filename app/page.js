@@ -1264,17 +1264,32 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
   });
   const [apiLoading, setApiLoading] = useState(true);
   const saveTimer = useRef(null);
+  // FIX: ref que guarda o estado PENDENTE de flush para a API
+  // Usado pelo beforeunload para não depender do localStorage (que pode falhar em modo privado)
+  const pendingSave = useRef(null);
 
   // Load from API on mount / when incorporadora changes
   useEffect(() => {
     if (!operadoraName || !devValue) { setApiLoading(false); return; }
     setApiLoading(true);
-    fetch(`/api/onboarding?op=${encodeURIComponent(operadoraName)}&dev=${encodeURIComponent(devValue)}`)
+
+    // FIX: AbortController evita que fetch retornado após troca de incorporadora sobrescreva estado
+    const abortCtrl = new AbortController();
+
+    fetch(`/api/onboarding?op=${encodeURIComponent(operadoraName)}&dev=${encodeURIComponent(devValue)}`,
+      { signal: abortCtrl.signal })
       .then(r => r.json())
       .then(json => {
         if (json.data) {
-          const apiSt = { ...defaultSt, ...json.data, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...json.data.client } };
-          setSt(apiSt);
+          // Remove false values from checks (legacy: before we removed false on uncheck)
+          const rawChecks = json.data.checks || {};
+          const cleanChecks = Object.fromEntries(Object.entries(rawChecks).filter(([, v]) => v === true));
+          const apiSt = { ...defaultSt, ...json.data, checks: cleanChecks, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...json.data.client } };
+          // FIX: não sobrescreve estado se usuário tem alterações pendentes (evita race condition)
+          setSt(prev => {
+            if (pendingSave.current) return prev; // usuário modificou durante o load → mantém
+            return apiSt;
+          });
           try { localStorage.setItem(KEY, JSON.stringify(apiSt)); } catch(e) {}
         } else {
           // No API record yet — try new key, then fall back to old key (pre-refactor migration)
@@ -1286,8 +1301,7 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
             if (raw) {
               const parsed = JSON.parse(raw);
               const localSt = { ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } };
-              setSt(localSt);
-              // Write to new key so future loads use correct key
+              setSt(prev => pendingSave.current ? prev : localSt);
               try { localStorage.setItem(KEY, JSON.stringify(localSt)); } catch(e) {}
               // Auto-sync to API immediately
               if (operadoraName && devValue) {
@@ -1295,34 +1309,33 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    op: operadoraName,
-                    dev: String(devValue),
-                    devLabel,
-                    checks: localSt.checks || {},
-                    diag: localSt.diag || {},
-                    client: localSt.client || {},
-                    tasks: localSt.tasks || [],
-                    notes: localSt.notes || '',
+                    op: operadoraName, dev: String(devValue), devLabel,
+                    checks: localSt.checks || {}, diag: localSt.diag || {},
+                    client: localSt.client || {}, tasks: localSt.tasks || [], notes: localSt.notes || '',
                   }),
                 }).catch(() => {});
               }
             } else {
-              setSt(defaultSt);
+              setSt(prev => pendingSave.current ? prev : defaultSt);
             }
-          } catch(e) { setSt(defaultSt); }
+          } catch(e) { setSt(prev => pendingSave.current ? prev : defaultSt); }
         }
       })
-      .catch(() => {
+      .catch(err => {
+        if (err.name === 'AbortError') return; // troca de incorporadora — ignorar
         // API unavailable — fall back to localStorage
         try {
           const r = localStorage.getItem(KEY);
           if (r) {
             const parsed = JSON.parse(r);
-            setSt({ ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
+            setSt(prev => pendingSave.current ? prev : { ...defaultSt, ...parsed, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...parsed.client } });
           }
         } catch(e) {}
       })
       .finally(() => setApiLoading(false));
+
+    // FIX: cancela fetch se incorporadora mudar antes da resposta chegar
+    return () => abortCtrl.abort();
   }, [opName]);
 
   // Helper: monta payload para API
@@ -1338,13 +1351,25 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
   }), [operadoraName, devValue, devLabel]);
 
   // Helper: envia para API com keepalive (funciona mesmo no beforeunload)
-  const flushToApi = useCallback((payload) => {
+  const flushToApi = useCallback((payload, silent = false) => {
+    if (!payload?.op || !payload?.dev) return Promise.resolve(); // guarda: nunca envia payload vazio
+    if (!silent) setSaveStatus('saving');
     return fetch('/api/onboarding', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       keepalive: true, // garante envio mesmo ao fechar aba
-    }).catch(() => {}); // localStorage já garantiu os dados localmente
+    })
+    .then(r => {
+      if (!silent) {
+        setSaveStatus(r.ok ? 'saved' : 'error');
+        clearTimeout(saveStatusTimer.current);
+        if (r.ok) saveStatusTimer.current = setTimeout(() => setSaveStatus(''), 2500);
+      }
+    })
+    .catch(() => {
+      if (!silent) setSaveStatus('error');
+    });
   }, []);
 
   // Debounced save: localStorage (instant) + API (1 s debounce)
@@ -1355,10 +1380,15 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
       try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(e) {
         console.warn('[ONB] localStorage write failed:', e?.name);
       }
+      // FIX: rastreia estado pendente via ref (não depende do localStorage para beforeunload)
+      pendingSave.current = next;
       // Debounce API save
       if (operadoraName && devValue) {
         clearTimeout(saveTimer.current);
-        saveTimer.current = setTimeout(() => flushToApi(buildPayload(next)), 1000);
+        saveTimer.current = setTimeout(() => {
+          flushToApi(buildPayload(next));
+          pendingSave.current = null; // limpa após flush
+        }, 1000);
       }
       return next;
     });
@@ -1368,13 +1398,12 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
   useEffect(() => {
     if (!operadoraName || !devValue) return;
     const handleUnload = () => {
-      if (saveTimer.current) {
-        // Timer pendente = dados não foram para API ainda → força envio síncrono
+      // FIX: usa pendingSave.current (estado real pendente) em vez de localStorage
+      // Evita enviar payload zerado se localStorage falhar (modo privado / quota)
+      if (saveTimer.current && pendingSave.current) {
         clearTimeout(saveTimer.current);
-        const payload = buildPayload(
-          JSON.parse(localStorage.getItem(KEY) || '{}')
-        );
-        flushToApi(payload);
+        flushToApi(buildPayload(pendingSave.current), true); // silent: componente está desmontando
+        pendingSave.current = null;
       }
     };
     window.addEventListener('beforeunload', handleUnload);
@@ -1385,7 +1414,9 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
   const [showConfig, setShowConfig] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const [noteSaved, setNoteSaved] = useState('');
+  const [saveStatus, setSaveStatus] = useState(''); // '' | 'saving' | 'saved' | 'error'
   const noteTimer = useRef(null);
+  const saveStatusTimer = useRef(null);
 
   useEffect(() => {
     const fn = (e) => {
@@ -1427,7 +1458,12 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
     st.taskFilter === 'abertas' ? !t.done : st.taskFilter === 'concluidas' ? t.done : true
   );
 
-  const toggleCheck = (id) => save(p => ({ ...p, checks: { ...p.checks, [id]: !p.checks[id] } }));
+  const toggleCheck = (id) => save(p => {
+    const newChecks = { ...p.checks };
+    if (newChecks[id]) { delete newChecks[id]; } // desmarcar: remove a chave
+    else { newChecks[id] = true; }              // marcar: true explícito
+    return { ...p, checks: newChecks };
+  });
   const toggleFase = (id) => save(p => ({ ...p, [id]: p[id] !== false ? false : true }));
   const isFaseOpen = (id) => st[id] !== false;
 
@@ -1552,8 +1588,11 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowDiag(true)} style={{ background: '#161616', border: '1px solid #272727', borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontFamily: mono, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666', display: 'flex', alignItems: 'center', gap: 6 }}>📊 Diagnóstico</button>
-        <button onClick={() => setShowConfig(true)} style={{ background: '#161616', border: '1px solid #272727', borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontFamily: mono, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>⚙ Config</button>
+        {saveStatus === 'saving' && <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: '#555', letterSpacing: 0.5 }}>Salvando…</span>}
+        {saveStatus === 'saved'  && <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: '#22c55e', letterSpacing: 0.5 }}>✓ Salvo</span>}
+        {saveStatus === 'error'  && <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: '#E8392A', letterSpacing: 0.5 }}>⚠ Erro ao salvar</span>}
+        <button onClick={() => setShowDiag(true)} style={{ background: '#161616', border: '1px solid #272727', borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666', display: 'flex', alignItems: 'center', gap: 6 }}>📊 Diagnóstico</button>
+        <button onClick={() => setShowConfig(true)} style={{ background: '#161616', border: '1px solid #272727', borderRadius: 4, padding: '5px 12px', cursor: 'pointer', fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#666' }}>⚙ Config</button>
       </div>
 
       {/* ── DIAGNÓSTICO BAR ── */}
@@ -1921,7 +1960,9 @@ export default function App() {
   const filtered = incs.filter(d => d.label?.toLowerCase().includes(search.toLowerCase())).slice(0, 25);
   const isMaster = authUser?.role === 'master';
   const isAdmin = authUser?.role === 'admin';
+  const isOperadora = authUser?.role === 'operadora';
   const canManage = isMaster || isAdmin;
+  const canEditDate = canManage || isOperadora;
 
   // Auth loading spinner
   if (authLoading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}><Spin /></div>;
@@ -2036,15 +2077,15 @@ export default function App() {
             </div>
             {/* Start date */}
             <div style={{ padding: '2px 16px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {canManage && editingDate === d.value ? (
+              {canEditDate && editingDate === d.value ? (
                 <input type="date" defaultValue={d.startDate} autoFocus
                   onBlur={e => updateDevDate(d.value, e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && updateDevDate(d.value, e.target.value)}
                   style={{ ...css.input, fontSize: 10, padding: '3px 6px', width: 120, fontFamily: "'JetBrains Mono',monospace" }} />
               ) : (
-                <span onClick={e => { if (!canManage) return; e.stopPropagation(); setEditingDate(d.value); }}
-                  style={{ fontSize: 10, color: '#444', fontFamily: "'JetBrains Mono',monospace", cursor: canManage ? 'pointer' : 'default', borderBottom: canManage ? '1px dashed #333' : 'none' }}
-                  title={canManage ? "Clique para editar a data de início" : undefined}>
+                <span onClick={e => { if (!canEditDate) return; e.stopPropagation(); setEditingDate(d.value); }}
+                  style={{ fontSize: 10, color: '#444', fontFamily: "'JetBrains Mono',monospace", cursor: canEditDate ? 'pointer' : 'default', borderBottom: canEditDate ? '1px dashed #333' : 'none' }}
+                  title={canEditDate ? "Clique para editar a data de início" : undefined}>
                   Início: {d.startDate ? new Date(d.startDate).toLocaleDateString('pt-BR') : 'definir'}
                 </span>
               )}

@@ -32,6 +32,6 @@ export async function GET(req) {
     });
   } catch (err) {
     console.error('[ONB DEBUG]', err);
-    return NextResponse.json({ error: err.message, stack: err.stack }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
