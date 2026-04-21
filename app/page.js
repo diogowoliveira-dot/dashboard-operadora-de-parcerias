@@ -1249,7 +1249,7 @@ const TRILHA_CLI = [
 // ═══════════════════════════════════════════
 function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '', startDate = '' }) {
   const KEY = `dwv_onboarding_${opName}`;
-  const defaultSt = { client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING' }, diag: {}, checks: {}, tasks: [], notes: '', taskFilter: 'todas' };
+  const defaultSt = { client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING' }, diag: {}, checks: {}, tasks: [], notes: '', taskFilter: 'todas', _savedAt: 0 };
 
   const [st, setSt] = useState(() => {
     // Start with localStorage as fast cache while API loads
@@ -1284,10 +1284,16 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
           // Remove false values from checks (legacy: before we removed false on uncheck)
           const rawChecks = json.data.checks || {};
           const cleanChecks = Object.fromEntries(Object.entries(rawChecks).filter(([, v]) => v === true));
-          const apiSt = { ...defaultSt, ...json.data, checks: cleanChecks, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...json.data.client } };
-          // FIX: não sobrescreve estado se usuário tem alterações pendentes (evita race condition)
+          const apiUpdatedAt = json.data.updatedAt ? new Date(json.data.updatedAt).getTime() : 0;
+          const apiSt = { ...defaultSt, ...json.data, checks: cleanChecks, client: { operadora: devLabel, inicio: startDate, fase: 'ONBOARDING', ...json.data.client }, _savedAt: apiUpdatedAt };
           setSt(prev => {
             if (pendingSave.current) return prev; // usuário modificou durante o load → mantém
+            // FIX: se localStorage é mais novo que API (e.g. PUT ainda em voo por outro mount),
+            // mantém estado local e dispara resave para sincronizar o banco
+            if ((prev._savedAt || 0) > apiUpdatedAt) {
+              setTimeout(() => flushToApi(buildPayload(prev)), 50);
+              return prev;
+            }
             return apiSt;
           });
           try { localStorage.setItem(KEY, JSON.stringify(apiSt)); } catch(e) {}
@@ -1338,6 +1344,30 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
     return () => abortCtrl.abort();
   }, [opName]);
 
+  // FIX: flush imediato ao desmontar (troca de sub-aba Dados↔Onboarding)
+  // operadoraName/devValue/devLabel não mudam dentro de uma instância (key prop garante remount)
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      if (pendingSave.current && operadoraName && devValue) {
+        const s = pendingSave.current;
+        fetch('/api/onboarding', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            op: operadoraName, dev: String(devValue), devLabel,
+            checks: s.checks || {}, diag: s.diag || {},
+            client: s.client || {}, tasks: s.tasks || [], notes: s.notes || '',
+          }),
+          keepalive: true,
+        });
+        pendingSave.current = null;
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — deps são constantes por instância
+
   // Helper: monta payload para API
   const buildPayload = useCallback((s) => ({
     op: operadoraName,
@@ -1375,7 +1405,8 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
   // Debounced save: localStorage (instant) + API (1 s debounce)
   const save = useCallback((upd) => {
     setSt(prev => {
-      const next = typeof upd === 'function' ? upd(prev) : { ...prev, ...upd };
+      const raw = typeof upd === 'function' ? upd(prev) : { ...prev, ...upd };
+      const next = { ...raw, _savedAt: Date.now() }; // timestamp para comparar com API
       // Write-through to localStorage imediatamente
       try { localStorage.setItem(KEY, JSON.stringify(next)); } catch(e) {
         console.warn('[ONB] localStorage write failed:', e?.name);
