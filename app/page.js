@@ -1386,8 +1386,12 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
       if (operadoraName && devValue) {
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(() => {
-          flushToApi(buildPayload(next));
-          pendingSave.current = null; // limpa após flush
+          saveTimer.current = null; // timer disparou; beforeunload não precisa cancelar
+          const snapshot = next; // captura referência do estado sendo salvo
+          flushToApi(buildPayload(next)).then(() => {
+            // Só limpa se nenhuma nova alteração chegou depois que esse flush começou
+            if (pendingSave.current === snapshot) pendingSave.current = null;
+          });
         }, 1000);
       }
       return next;
