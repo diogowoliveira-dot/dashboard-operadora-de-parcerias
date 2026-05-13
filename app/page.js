@@ -1114,7 +1114,7 @@ function PlaybookTab({ isMaster, isGestor, authUser }) {
   const canViewTracking = isMaster || isGestor; // master e gestores veem tracking
   const isRegularUser = !isMaster && !isGestor;
 
-  const defaultTab = isRegularUser ? 'meu-progresso' : 'tracking';
+  const defaultTab = isMaster ? 'tracking' : 'meus-cursos';
   const [tab, setTab] = useState(defaultTab);
   const [tracking, setTracking] = useState(null);
   const [materiais, setMateriais] = useState([]);
@@ -1157,28 +1157,27 @@ function PlaybookTab({ isMaster, isGestor, authUser }) {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const promises = [apiPlaybook.materiais()];
+    // Todos carregam: materiais + meu progresso + minhas trilhas
+    const promises = [
+      apiPlaybook.materiais(),
+      fetch('/api/playbook?action=meu-progresso').then(r => r.json()),
+      fetch('/api/playbook?action=minhas-trilhas').then(r => r.json()),
+    ];
+    // Gestores e master: tracking + trilhas gerenciáveis + users
     if (canViewTracking) promises.push(apiPlaybook.tracking());
     if (canManageTrilhas) promises.push(fetch('/api/playbook?action=trilhas').then(r => r.json()));
     if (canViewTracking) promises.push(fetch('/api/users').then(r => r.json()));
-    if (isRegularUser) {
-      promises.push(fetch('/api/playbook?action=meu-progresso').then(r => r.json()));
-      promises.push(fetch('/api/playbook?action=minhas-trilhas').then(r => r.json()));
-    }
 
     const results = await Promise.all(promises);
     let idx = 0;
-    const m = results[idx++];
-    if (m.materiais) setMateriais(m.materiais);
+    const m = results[idx++]; if (m.materiais) setMateriais(m.materiais);
+    const mp = results[idx++]; setMeuProgresso(mp);
+    const mt = results[idx++]; if (mt.trilhas) setMinhasTrilhas(mt.trilhas);
     if (canViewTracking) { const t = results[idx++]; if (t.users) setTracking(t); }
     if (canManageTrilhas) { const tr = results[idx++]; if (tr.trilhas) setTrilhas(tr.trilhas); }
     if (canViewTracking) { const u = results[idx++]; if (u.users) setAvailableUsers(u.users); }
-    if (isRegularUser) {
-      const mp = results[idx++]; setMeuProgresso(mp);
-      const mt = results[idx++]; if (mt.trilhas) setMinhasTrilhas(mt.trilhas);
-    }
     setLoading(false);
-  }, [canViewTracking, canManageTrilhas, isRegularUser]);
+  }, [canViewTracking, canManageTrilhas]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -1435,25 +1434,28 @@ function PlaybookTab({ isMaster, isGestor, authUser }) {
       {/* Tab switcher */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', borderRadius: 8, padding: 3, border: '1px solid #1a1a1a', flexWrap: 'wrap' }}>
-          {isRegularUser && <>
-            <button onClick={() => setTab('meu-progresso')} style={{ ...css.btn, background: tab === 'meu-progresso' ? '#E8392A' : 'transparent', color: tab === 'meu-progresso' ? '#fff' : '#555', padding: '8px 18px' }}>
-              📊 Meu Progresso
-            </button>
-            <button onClick={() => setTab('meus-cursos')} style={{ ...css.btn, background: tab === 'meus-cursos' ? '#E8392A' : 'transparent', color: tab === 'meus-cursos' ? '#fff' : '#555', padding: '8px 18px' }}>
-              📚 Todos os Cursos ({materiais.length})
-            </button>
-            <button onClick={() => setTab('minhas-trilhas')} style={{ ...css.btn, background: tab === 'minhas-trilhas' ? '#E8392A' : 'transparent', color: tab === 'minhas-trilhas' ? '#fff' : '#555', padding: '8px 18px' }}>
-              🎯 Minhas Trilhas ({minhasTrilhas.length})
+          {/* Abas pessoais — todos os usuários veem */}
+          <button onClick={() => setTab('meus-cursos')} style={{ ...css.btn, background: tab === 'meus-cursos' ? '#E8392A' : 'transparent', color: tab === 'meus-cursos' ? '#fff' : '#555', padding: '8px 18px' }}>
+            📚 Cursos ({materiais.length})
+          </button>
+          <button onClick={() => setTab('meu-progresso')} style={{ ...css.btn, background: tab === 'meu-progresso' ? '#E8392A' : 'transparent', color: tab === 'meu-progresso' ? '#fff' : '#555', padding: '8px 18px' }}>
+            📊 Meu Progresso
+          </button>
+          <button onClick={() => setTab('minhas-trilhas')} style={{ ...css.btn, background: tab === 'minhas-trilhas' ? '#E8392A' : 'transparent', color: tab === 'minhas-trilhas' ? '#fff' : '#555', padding: '8px 18px' }}>
+            🎯 Minhas Trilhas {minhasTrilhas.length > 0 ? `(${minhasTrilhas.length})` : ''}
+          </button>
+          {/* Abas de gestão — só gestores e master */}
+          {canViewTracking && <>
+            <div style={{ width: 1, height: 24, background: '#222', margin: '0 2px', alignSelf: 'center' }} />
+            <button onClick={() => setTab('tracking')} style={{ ...css.btn, background: tab === 'tracking' ? '#E8392A' : 'transparent', color: tab === 'tracking' ? '#fff' : '#555', padding: '8px 18px' }}>
+              👥 Desempenho
             </button>
           </>}
-          {canViewTracking && <button onClick={() => setTab('tracking')} style={{ ...css.btn, background: tab === 'tracking' ? '#E8392A' : 'transparent', color: tab === 'tracking' ? '#fff' : '#555', padding: '8px 18px' }}>
-            📊 Acessos por Usuário
-          </button>}
           {canManageTrilhas && <button onClick={() => setTab('trilhas')} style={{ ...css.btn, background: tab === 'trilhas' ? '#E8392A' : 'transparent', color: tab === 'trilhas' ? '#fff' : '#555', padding: '8px 18px' }}>
-            🎯 Trilhas ({trilhas.length})
+            🛠 Gerenciar Trilhas {trilhas.length > 0 ? `(${trilhas.length})` : ''}
           </button>}
           {canManageContent && <button onClick={() => setTab('materiais')} style={{ ...css.btn, background: tab === 'materiais' ? '#E8392A' : 'transparent', color: tab === 'materiais' ? '#fff' : '#555', padding: '8px 18px' }}>
-            📚 Materiais ({materiais.length})
+            ⚙ Materiais ({materiais.length})
           </button>}
         </div>
         {tab === 'tracking' && <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1582,7 +1584,7 @@ function PlaybookTab({ isMaster, isGestor, authUser }) {
 
       {/* ── MATERIAIS TAB (master only) ── */}
       {/* ── MEU PROGRESSO TAB (regular users) ── */}
-      {tab === 'meu-progresso' && isRegularUser && meuProgresso && <>
+      {tab === 'meu-progresso' && meuProgresso && <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
           <MC label="Total de Acessos" value={meuProgresso.total_acessos} color="#f5f5f5" />
           <MC label="Materiais Vistos" value={meuProgresso.acessados?.length || 0} color="#22c55e" />
@@ -1647,7 +1649,7 @@ function PlaybookTab({ isMaster, isGestor, authUser }) {
       </>}
 
       {/* ── MEUS CURSOS TAB (user regular — lista todos materiais) ── */}
-      {tab === 'meus-cursos' && isRegularUser && <>
+      {tab === 'meus-cursos' && <>
         <div style={css.card}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
@@ -1685,7 +1687,7 @@ function PlaybookTab({ isMaster, isGestor, authUser }) {
       </>}
 
       {/* ── MINHAS TRILHAS TAB (user regular) ── */}
-      {tab === 'minhas-trilhas' && isRegularUser && <>
+      {tab === 'minhas-trilhas' && <>
         {minhasTrilhas.length === 0 && <div style={{ ...css.card, padding: 40, textAlign: 'center' }}>
           <div style={{ fontSize: 32, opacity: .3, marginBottom: 8 }}>🎯</div>
           <div style={{ color: '#555', fontSize: 14 }}>Nenhuma trilha atribuída a você ainda.</div>
