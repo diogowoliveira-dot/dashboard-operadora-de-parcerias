@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "dashboard",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "export PATH=/usr/local/bin:$PATH && cd /Users/diogowestphaldeoliveira/Downloads/stitch_gest_o_de_parcerias/dashboard_operadora_de_parcerias && npm run dev"],
-      "port": 3000,
-      "autoPort": true
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
     }
   ]
 }

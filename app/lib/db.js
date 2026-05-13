@@ -52,7 +52,6 @@ export async function initDb() {
   `;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;
-  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL`;
 
   // ── Tabela: sessions ─────────────────────────────────────────────────
   await sql`
@@ -82,67 +81,6 @@ export async function initDb() {
     )
   `;
 
-  // ── Tabela: playbook_materiais ────────────────────────────────────────
-  await sql`
-    CREATE TABLE IF NOT EXISTS playbook_materiais (
-      id SERIAL PRIMARY KEY,
-      titulo TEXT NOT NULL,
-      descricao TEXT,
-      tipo TEXT NOT NULL DEFAULT 'documento',
-      url TEXT,
-      ordem INTEGER NOT NULL DEFAULT 0,
-      ativo BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `;
-  await sql`ALTER TABLE playbook_materiais ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE`;
-  await sql`ALTER TABLE playbook_materiais ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;
-
-  // ── Tabela: playbook_acessos ─────────────────────────────────────────
-  await sql`
-    CREATE TABLE IF NOT EXISTS playbook_acessos (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      material_id INTEGER NOT NULL REFERENCES playbook_materiais(id) ON DELETE CASCADE,
-      accessed_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `;
-
-  // ── Tabela: playbook_trilhas ─────────────────────────────────────────
-  await sql`
-    CREATE TABLE IF NOT EXISTS playbook_trilhas (
-      id SERIAL PRIMARY KEY,
-      nome TEXT NOT NULL,
-      descricao TEXT,
-      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `;
-
-  // ── Tabela: playbook_trilha_materiais ────────────────────────────────
-  await sql`
-    CREATE TABLE IF NOT EXISTS playbook_trilha_materiais (
-      id SERIAL PRIMARY KEY,
-      trilha_id INTEGER NOT NULL REFERENCES playbook_trilhas(id) ON DELETE CASCADE,
-      material_id INTEGER NOT NULL REFERENCES playbook_materiais(id) ON DELETE CASCADE,
-      ordem INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(trilha_id, material_id)
-    )
-  `;
-
-  // ── Tabela: playbook_trilha_usuarios ─────────────────────────────────
-  await sql`
-    CREATE TABLE IF NOT EXISTS playbook_trilha_usuarios (
-      id SERIAL PRIMARY KEY,
-      trilha_id INTEGER NOT NULL REFERENCES playbook_trilhas(id) ON DELETE CASCADE,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      assigned_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(trilha_id, user_id)
-    )
-  `;
-
   // ── Índices para performance ─────────────────────────────────────────
   await sql`CREATE INDEX IF NOT EXISTS idx_carteira_operadora ON carteira(operadora_name)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_carteira_dev_value ON carteira(dev_value)`;
@@ -152,15 +90,6 @@ export async function initDb() {
   await sql`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_acessos_user ON playbook_acessos(user_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_acessos_material ON playbook_acessos(material_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_materiais_ordem ON playbook_materiais(ordem)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_materiais_ativo ON playbook_materiais(ativo)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_trilhas_created_by ON playbook_trilhas(created_by)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_trilha_materiais_trilha ON playbook_trilha_materiais(trilha_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_trilha_usuarios_trilha ON playbook_trilha_usuarios(trilha_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_playbook_trilha_usuarios_user ON playbook_trilha_usuarios(user_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_users_created_by ON users(created_by)`;
 
   // ── Trigger: updated_at automático ───────────────────────────────────
   await sql`
