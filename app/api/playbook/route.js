@@ -1,71 +1,6 @@
 import { NextResponse } from 'next/server';
 import sql, { initDb } from '../../lib/db';
 import { getSessionUser } from '../../lib/auth';
-import { sendEmail } from '../../lib/email';
-
-const APP_URL = process.env.APP_URL || 'https://dashboard-operadora-de-parcerias.vercel.app';
-
-// ── Email helpers (fire-and-forget, não bloqueia a response) ────────
-async function notifyNewMaterial(titulo, tipo) {
-  try {
-    const users = await sql`SELECT email, name FROM users WHERE active = TRUE AND email IS NOT NULL`;
-    for (const u of users) {
-      sendEmail({
-        to: u.email,
-        subject: `📚 Novo material no Playbook: ${titulo}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:480px;margin:auto;color:#f5f5f5;background:#0a0a0a">
-            <div style="background:#E8392A;padding:20px 28px;border-radius:8px 8px 0 0;text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#fff">Playbook DWV</div>
-            </div>
-            <div style="padding:24px 28px;border:1px solid #1a1a1a;border-top:none;border-radius:0 0 8px 8px">
-              <p style="color:#ccc;font-size:14px">Ola ${u.name || 'equipe'},</p>
-              <p style="color:#ccc;font-size:14px">Um novo material foi adicionado ao Playbook:</p>
-              <div style="background:#111;border:1px solid #222;border-radius:8px;padding:16px 20px;margin:16px 0">
-                <div style="font-size:16px;font-weight:700;color:#f5f5f5">${titulo}</div>
-                <div style="font-size:12px;color:#888;margin-top:4px">Tipo: ${tipo}</div>
-              </div>
-              <div style="text-align:center;margin:20px 0">
-                <a href="${APP_URL}" style="background:#E8392A;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:14px;display:inline-block">Acessar Playbook</a>
-              </div>
-              <p style="color:#555;font-size:11px;text-align:center">DWV — Gestao de Parcerias Imobiliarias</p>
-            </div>
-          </div>`,
-      }).catch(() => {});
-    }
-  } catch {}
-}
-
-async function notifyTrilhaAssigned(trilhaNome, userIds) {
-  try {
-    if (!userIds?.length) return;
-    const users = await sql`SELECT email, name FROM users WHERE id = ANY(${userIds}) AND active = TRUE`;
-    for (const u of users) {
-      sendEmail({
-        to: u.email,
-        subject: `🎯 Nova trilha atribuída: ${trilhaNome}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:480px;margin:auto;color:#f5f5f5;background:#0a0a0a">
-            <div style="background:#E8392A;padding:20px 28px;border-radius:8px 8px 0 0;text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#fff">Playbook DWV</div>
-            </div>
-            <div style="padding:24px 28px;border:1px solid #1a1a1a;border-top:none;border-radius:0 0 8px 8px">
-              <p style="color:#ccc;font-size:14px">Ola ${u.name || 'equipe'},</p>
-              <p style="color:#ccc;font-size:14px">Uma nova trilha de conhecimento foi atribuida a voce:</p>
-              <div style="background:#111;border-left:3px solid #f59e0b;border-radius:0 8px 8px 0;padding:16px 20px;margin:16px 0">
-                <div style="font-size:16px;font-weight:700;color:#f5f5f5">🎯 ${trilhaNome}</div>
-              </div>
-              <p style="color:#ccc;font-size:14px">Acesse o Playbook para ver os materiais da trilha e acompanhar seu progresso.</p>
-              <div style="text-align:center;margin:20px 0">
-                <a href="${APP_URL}" style="background:#E8392A;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:14px;display:inline-block">Ver Minha Trilha</a>
-              </div>
-              <p style="color:#555;font-size:11px;text-align:center">DWV — Gestao de Parcerias Imobiliarias</p>
-            </div>
-          </div>`,
-      }).catch(() => {});
-    }
-  } catch {}
-}
 
 export const dynamic = 'force-dynamic';
 
@@ -117,32 +52,30 @@ export async function GET(req) {
 
     // ── Minhas trilhas (qualquer user) ──
     if (action === 'minhas-trilhas') {
-      // Single query: trilhas + materiais + progresso (eliminates N+1)
       const trilhas = await sql`
         SELECT t.id, t.nome, t.descricao, t.created_at,
                cb.name AS criado_por
         FROM playbook_trilha_usuarios tu
         JOIN playbook_trilhas t ON t.id = tu.trilha_id
-        LEFT JOIN users cb ON cb.id = t.created_by
+        JOIN users cb ON cb.id = t.created_by
         WHERE tu.user_id = ${user.id}
         ORDER BY tu.assigned_at DESC
       `;
-      const trilhaIds = trilhas.map(t => t.id);
-      let allMats = [];
-      if (trilhaIds.length > 0) {
-        allMats = await sql`
-          SELECT tm.trilha_id, tm.material_id, tm.ordem, m.titulo, m.descricao, m.tipo, m.url,
-            COALESCE((SELECT COUNT(*)::int FROM playbook_acessos WHERE user_id = ${user.id} AND material_id = m.id), 0) AS vezes
+      // Para cada trilha, carregar materiais e progresso
+      const result = [];
+      for (const tr of trilhas) {
+        const mats = await sql`
+          SELECT tm.material_id, tm.ordem, m.titulo, m.descricao, m.tipo, m.url,
+            (SELECT COUNT(*)::int FROM playbook_acessos WHERE user_id = ${user.id} AND material_id = m.id) AS vezes
           FROM playbook_trilha_materiais tm
           JOIN playbook_materiais m ON m.id = tm.material_id AND m.ativo = TRUE
-          WHERE tm.trilha_id = ANY(${trilhaIds})
+          WHERE tm.trilha_id = ${tr.id}
           ORDER BY tm.ordem ASC
         `;
+        const total = mats.length;
+        const vistos = mats.filter(m => m.vezes > 0).length;
+        result.push({ ...tr, materiais: mats, total, vistos });
       }
-      const result = trilhas.map(tr => {
-        const mats = allMats.filter(m => m.trilha_id === tr.id);
-        return { ...tr, materiais: mats, total: mats.length, vistos: mats.filter(m => m.vezes > 0).length };
-      });
       return NextResponse.json({ trilhas: result });
     }
 
@@ -325,8 +258,6 @@ export async function POST(req) {
         VALUES (${titulo}, ${descricao || null}, ${tipo}, ${url || null}, ${ordem})
         RETURNING id
       `;
-      // Notifica todos os users por email (fire-and-forget)
-      notifyNewMaterial(titulo, tipo);
       return NextResponse.json({ ok: true, id: result[0].id });
     }
 
@@ -369,9 +300,6 @@ export async function POST(req) {
           ON CONFLICT (trilha_id, user_id) DO NOTHING
         `;
       }
-
-      // Notifica usuários atribuídos (fire-and-forget)
-      if (user_ids.length > 0) notifyTrilhaAssigned(nome, user_ids);
 
       return NextResponse.json({ ok: true, id: trilhaId });
     }
@@ -419,13 +347,6 @@ export async function POST(req) {
           ON CONFLICT (trilha_id, user_id) DO NOTHING
         `;
       }
-
-      // Notifica novos usuários atribuídos
-      if (user_ids.length > 0) {
-        const trilha = await sql`SELECT nome FROM playbook_trilhas WHERE id = ${trilha_id}`;
-        if (trilha.length) notifyTrilhaAssigned(trilha[0].nome, user_ids);
-      }
-
       return NextResponse.json({ ok: true });
     }
 

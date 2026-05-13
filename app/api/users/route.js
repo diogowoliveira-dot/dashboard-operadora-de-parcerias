@@ -78,12 +78,11 @@ export async function POST(req) {
     if (existing.length > 0) {
       if (existing[0].role === 'master')
         return NextResponse.json({ error: 'Não é possível reatribuir o master' }, { status: 400 });
-      // Mantém created_by original se já existia (não transfere ownership)
       await sql`
         UPDATE users
         SET role = ${role}, operadora_name = ${opName},
             invite_token = ${token}, invite_expires_at = ${expiresAt},
-            active = TRUE, created_by = COALESCE(created_by, ${me.id})
+            active = TRUE, created_by = ${me.id}
         WHERE email = ${normalizedEmail}
       `;
     } else {
@@ -107,7 +106,7 @@ export async function POST(req) {
           <div style="border:1px solid #eee;border-top:none;padding:28px 32px;border-radius:0 0 10px 10px">
             <p>Ola <strong>${inviteName || email}</strong>,</p>
             <p>Sua conta foi criada no Playbook DWV — a central de materiais da equipe comercial.</p>
-            <p>Clique no botao abaixo para criar sua senha e ativar seu acesso.</p>
+            <p>Acesse com seu email <strong>${email}</strong> e a senha fornecida pelo administrador.</p>
             <div style="text-align:center;margin:28px 0">
               <a href="${inviteUrl}" style="background:#E8392A;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">
                 Acessar Playbook
