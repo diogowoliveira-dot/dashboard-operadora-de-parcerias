@@ -61,6 +61,8 @@ const apiCarteira = {
 };
 const apiTarefas = {
   list: (operadora_name, year, month) => fetch(`/api/tarefas?operadora_name=${encodeURIComponent(operadora_name)}&year=${year}&month=${month}`).then(r => r.json()),
+  listRange: (operadora_name, start, end) => fetch(`/api/tarefas?operadora_name=${encodeURIComponent(operadora_name)}&start_date=${start}&end_date=${end}`).then(r => r.json()),
+  listOverdue: (operadora_name) => fetch(`/api/tarefas?operadora_name=${encodeURIComponent(operadora_name)}&overdue=true`).then(r => r.json()),
   create: (body) => fetch('/api/tarefas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   update: (body) => fetch('/api/tarefas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   remove: (id) => fetch(`/api/tarefas?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
@@ -1896,42 +1898,71 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
 // ═══════════════════════════════════════════
 // AGENDA — TAREFA MODAL
 // ═══════════════════════════════════════════
-function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved }) {
+function TarefaModal({ task, defaultDate, defaultHora, operadoraName, devs, onClose, onSaved }) {
   const [titulo, setTitulo] = useState(task?.titulo || '');
-  const [data, setData] = useState(
-    task?.data ? String(task.data).split('T')[0] : (defaultDate || todayISO())
-  );
-  const [hora, setHora] = useState(task?.hora ? String(task.hora).slice(0, 5) : '');
+  const [data, setData] = useState(task?.data ? String(task.data).split('T')[0] : (defaultDate || todayISO()));
+  const [hora, setHora] = useState(task?.hora ? String(task.hora).slice(0, 5) : (defaultHora || ''));
   const [prioridade, setPrioridade] = useState(task?.prioridade || 'media');
   const [status, setStatus] = useState(task?.status || 'pendente');
   const [devValue, setDevValue] = useState(task?.dev_value ? String(task.dev_value) : '');
   const [descricao, setDescricao] = useState(task?.descricao || '');
+  const [recorrencia, setRecorrencia] = useState(task?.recorrencia || 'nenhuma');
+  const [attachments, setAttachments] = useState(task?.attachments || []);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [errMsg, setErrMsg] = useState('');
+  const fileRef = useRef(null);
 
   const selectedDev = devs.find(d => String(d.value) === devValue);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setErrMsg('Arquivo muito grande. Máximo 5MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target.result.split(',')[1];
+      setAttachments(prev => [...prev, { type: 'file', name: file.name, mime: file.type, data: base64 }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const addLink = () => {
+    if (!linkUrl.trim()) return;
+    const url = linkUrl.trim().startsWith('http') ? linkUrl.trim() : 'https://' + linkUrl.trim();
+    setAttachments(prev => [...prev, { type: 'link', url, title: linkTitle.trim() || url }]);
+    setLinkUrl(''); setLinkTitle('');
+  };
+
+  const removeAttachment = (idx) => setAttachments(prev => prev.filter((_, i) => i !== idx));
+
+  const openPdf = (b64, mime) => {
+    try {
+      const bytes = atob(b64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: mime }));
+      window.open(url, '_blank');
+    } catch { window.open('data:' + mime + ';base64,' + b64, '_blank'); }
+  };
 
   const save = async () => {
     if (!titulo.trim() || !data) return;
     setSaving(true); setErrMsg('');
     try {
       const body = {
-        operadora_name: operadoraName,
-        titulo: titulo.trim(),
-        data,
-        hora: hora || null,
-        prioridade,
-        status,
+        operadora_name: operadoraName, titulo: titulo.trim(), data,
+        hora: hora || null, prioridade, status,
         descricao: descricao.trim() || null,
         dev_value: selectedDev ? selectedDev.value : null,
         dev_label: selectedDev ? selectedDev.label : null,
+        attachments, recorrencia,
       };
-      if (task?.id) {
-        await apiTarefas.update({ id: task.id, ...body });
-      } else {
-        await apiTarefas.create(body);
-      }
+      if (task?.id) await apiTarefas.update({ id: task.id, ...body });
+      else await apiTarefas.create(body);
       onSaved();
     } catch { setErrMsg('Erro ao salvar. Tente novamente.'); }
     finally { setSaving(false); }
@@ -1950,97 +1981,196 @@ function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved 
     const prev = status;
     const next = status === 'concluida' ? 'pendente' : 'concluida';
     setStatus(next);
-    try {
-      await apiTarefas.update({ id: task.id, status: next });
-      onSaved();
-    } catch {
-      setStatus(prev); // rollback otimista
-      setErrMsg('Erro ao atualizar status.');
-    }
+    try { await apiTarefas.update({ id: task.id, status: next }); onSaved(); }
+    catch { setStatus(prev); setErrMsg('Erro ao atualizar status.'); }
   };
 
   const prioColor = { baixa: '#22c55e', media: '#f59e0b', alta: '#E8392A' };
   const lbl = { fontSize: 11, color: '#555', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={onClose}>
-      <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{task ? 'Editar Tarefa' : 'Nova Tarefa'}</div>
-          <button onClick={onClose} style={{ ...css.btn, background: 'transparent', color: '#555', border: 'none', fontSize: 18, padding: '0 6px', lineHeight: 1 }}>✕</button>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={onClose}>
+      <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: 16, width: '95vw', maxWidth: 900, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#f5f5f5' }}>{task ? 'Editar Tarefa' : 'Nova Tarefa'}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {task && (
+              <button type="button" onClick={toggleStatus}
+                style={{ ...css.btn, fontSize: 12,
+                  background: status === 'concluida' ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                  color: status === 'concluida' ? '#22c55e' : '#9ca3af',
+                  border: `1px solid ${status === 'concluida' ? 'rgba(34,197,94,0.3)' : '#2a2a2a'}` }}>
+                {status === 'concluida' ? '✓ Concluída' : '○ Marcar concluída'}
+              </button>
+            )}
+            <button onClick={onClose} style={{ ...css.btn, background: 'transparent', color: '#555', border: '1px solid #222', fontSize: 16, padding: '4px 10px' }}>✕</button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={lbl}>Título *</label>
-            <input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Descreva a tarefa..."
-              autoFocus style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} />
+        {/* Body — duas colunas */}
+        <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+
+          {/* Coluna esquerda: informações da tarefa */}
+          <div style={{ padding: '20px 24px', overflowY: 'auto', borderRight: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={lbl}>Título *</label>
+              <input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Descreva a tarefa..."
+                autoFocus style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={lbl}>Data *</label>
+                <input type="date" value={data} onChange={e => setData(e.target.value)}
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={lbl}>Horário</label>
+                <input type="time" value={hora} onChange={e => setHora(e.target.value)}
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+
+            {devs.length > 0 && (
+              <div>
+                <label style={lbl}>Incorporadora</label>
+                <select value={devValue} onChange={e => setDevValue(e.target.value)}
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
+                  <option value="">Sem vinculação específica</option>
+                  {devs.map(d => <option key={d.value} value={String(d.value)}>{d.label}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label style={lbl}>Prioridade</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['baixa', 'media', 'alta'].map(p => (
+                  <button key={p} type="button" onClick={() => setPrioridade(p)}
+                    style={{ ...css.btn, flex: 1, fontSize: 11,
+                      background: prioridade === p ? `rgba(${p === 'alta' ? '232,57,42' : p === 'media' ? '245,158,11' : '34,197,94'},0.15)` : '#141414',
+                      color: prioridade === p ? prioColor[p] : '#555',
+                      border: `1px solid ${prioridade === p ? prioColor[p] + '44' : '#1a1a1a'}` }}>
+                    {p === 'media' ? 'Média' : p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {!task && (
+              <div>
+                <label style={lbl}>Recorrência</label>
+                <select value={recorrencia} onChange={e => setRecorrencia(e.target.value)}
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
+                  <option value="nenhuma">Nenhuma (tarefa única)</option>
+                  <option value="diaria">Diária — repete por 30 dias</option>
+                  <option value="semanal">Semanal — repete por 12 semanas</option>
+                  <option value="mensal">Mensal — repete por 6 meses</option>
+                </select>
+                {recorrencia !== 'nenhuma' && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 5 }}>
+                    Serão criadas {recorrencia === 'diaria' ? '30 tarefas' : recorrencia === 'semanal' ? '12 tarefas' : '6 tarefas'} a partir da data escolhida.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div>
+              <label style={lbl}>Observação</label>
+              <textarea value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Detalhes, contexto ou anotações..."
+                style={{ ...css.input, width: '100%', boxSizing: 'border-box', minHeight: 100, resize: 'vertical', fontFamily: 'inherit' }} />
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {/* Coluna direita: anexos */}
+          <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <label style={lbl}>Data *</label>
-              <input type="date" value={data} onChange={e => setData(e.target.value)}
-                style={{ ...css.input, width: '100%', boxSizing: 'border-box', fontFamily: "'JetBrains Mono',monospace" }} />
-            </div>
-            <div>
-              <label style={lbl}>Horário</label>
-              <input type="time" value={hora} onChange={e => setHora(e.target.value)}
-                style={{ ...css.input, width: '100%', boxSizing: 'border-box', fontFamily: "'JetBrains Mono',monospace" }} />
-            </div>
-          </div>
+              <label style={lbl}>Anexos</label>
 
-          {devs.length > 0 && <div>
-            <label style={lbl}>Incorporadora</label>
-            <select value={devValue} onChange={e => setDevValue(e.target.value)}
-              style={{ ...css.input, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
-              <option value="">Sem vinculação específica</option>
-              {devs.map(d => <option key={d.value} value={String(d.value)}>{d.label}</option>)}
-            </select>
-          </div>}
+              <button type="button" onClick={() => fileRef.current?.click()}
+                style={{ ...css.btn, background: '#141414', color: '#9ca3af', border: '1px solid #222', fontSize: 11, width: '100%', marginBottom: 10 }}>
+                📎 Adicionar arquivo (PDF, imagem — máx 5 MB)
+              </button>
+              <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp" style={{ display: 'none' }} onChange={handleFileChange} />
 
-          <div>
-            <label style={lbl}>Prioridade</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['baixa', 'media', 'alta'].map(p => (
-                <button key={p} type="button" onClick={() => setPrioridade(p)}
-                  style={{ ...css.btn, flex: 1,
-                    background: prioridade === p ? `rgba(${p === 'alta' ? '232,57,42' : p === 'media' ? '245,158,11' : '34,197,94'},0.15)` : '#141414',
-                    color: prioridade === p ? prioColor[p] : '#555',
-                    border: `1px solid ${prioridade === p ? prioColor[p] + '44' : '#1a1a1a'}` }}>
-                  {p === 'media' ? 'Média' : p.charAt(0).toUpperCase() + p.slice(1)}
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                <input value={linkTitle} onChange={e => setLinkTitle(e.target.value)} placeholder="Título do link (opcional)"
+                  style={{ ...css.input, width: '100%', boxSizing: 'border-box', fontSize: 12 }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input value={linkUrl} onChange={e => setLinkUrl(e.target.value)} placeholder="https://..."
+                    style={{ ...css.input, flex: 1, fontSize: 12 }} onKeyDown={e => e.key === 'Enter' && addLink()} />
+                  <button type="button" onClick={addLink}
+                    style={{ ...css.btn, background: '#141414', color: '#9ca3af', border: '1px solid #222', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    + Link
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de anexos */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {attachments.length === 0 ? (
+                <div style={{ color: '#333', fontSize: 12, textAlign: 'center', padding: '28px 0', border: '1px dashed #222', borderRadius: 8 }}>
+                  Nenhum anexo ainda
+                </div>
+              ) : attachments.map((att, idx) => (
+                <div key={idx} style={{ background: '#111', borderRadius: 8, border: '1px solid #1a1a1a', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>
+                      {att.type === 'link' ? '🔗' : att.mime?.startsWith('image') ? '🖼️' : '📄'}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 12, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {att.title || att.name}
+                    </span>
+                    {att.type === 'link' && (
+                      <a href={att.url} target="_blank" rel="noreferrer"
+                        style={{ fontSize: 10, color: '#6b7280', textDecoration: 'none', border: '1px solid #2a2a2a', borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>
+                        Abrir
+                      </a>
+                    )}
+                    {att.type === 'file' && att.mime === 'application/pdf' && (
+                      <button type="button" onClick={() => openPdf(att.data, att.mime)}
+                        style={{ ...css.btn, fontSize: 10, background: 'transparent', color: '#6b7280', border: '1px solid #2a2a2a', padding: '2px 6px', flexShrink: 0 }}>
+                        Abrir PDF
+                      </button>
+                    )}
+                    <button type="button" onClick={() => removeAttachment(idx)}
+                      style={{ ...css.btn, background: 'transparent', color: '#444', border: 'none', padding: '2px 4px', fontSize: 14, flexShrink: 0 }}>✕</button>
+                  </div>
+                  {att.type === 'file' && att.mime?.startsWith('image') && (
+                    <img src={`data:${att.mime};base64,${att.data}`} alt={att.name}
+                      style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }} />
+                  )}
+                  {att.type === 'link' && (
+                    <div style={{ padding: '4px 12px 8px', fontSize: 10, color: '#444', wordBreak: 'break-all' }}>{att.url}</div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
+        </div>
 
-          <div>
-            <label style={lbl}>Observação</label>
-            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Detalhes ou contexto..."
-              style={{ ...css.input, width: '100%', boxSizing: 'border-box', minHeight: 70, resize: 'vertical', fontFamily: 'inherit' }} />
-          </div>
-
-          {errMsg && <div style={{ fontSize: 12, color: '#E8392A', padding: '8px 12px', background: 'rgba(232,57,42,0.08)', borderRadius: 6, border: '1px solid rgba(232,57,42,0.2)' }}>{errMsg}</div>}
-
-          <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
-            {task && <>
-              <button type="button" onClick={toggleStatus}
-                style={{ ...css.btn, flex: 1,
-                  background: status === 'concluida' ? 'rgba(34,197,94,0.12)' : '#141414',
-                  color: status === 'concluida' ? '#22c55e' : '#555',
-                  border: `1px solid ${status === 'concluida' ? 'rgba(34,197,94,0.25)' : '#1a1a1a'}` }}>
-                {status === 'concluida' ? '✓ Concluída' : 'Marcar Concluída'}
-              </button>
-              <button type="button" onClick={remove} disabled={deleting}
-                style={{ ...css.btn, background: 'rgba(232,57,42,0.08)', color: '#E8392A', border: '1px solid rgba(232,57,42,0.15)' }}>
-                {deleting ? '...' : 'Excluir'}
-              </button>
-            </>}
-            <button type="button" onClick={save} disabled={saving || !titulo.trim() || !data}
-              style={{ ...css.btn, background: '#E8392A', color: '#fff', flex: task ? 0 : 1, opacity: (!titulo.trim() || !data) ? 0.5 : 1 }}>
-              {saving ? 'Salvando...' : task ? 'Salvar' : 'Criar Tarefa'}
+        {/* Footer */}
+        {errMsg && (
+          <div style={{ margin: '0 24px 0', fontSize: 12, color: '#E8392A', padding: '8px 12px', background: 'rgba(232,57,42,0.08)', borderRadius: 6, border: '1px solid rgba(232,57,42,0.2)' }}>{errMsg}</div>
+        )}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid #1a1a1a', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, alignItems: 'center' }}>
+          {task && (
+            <button type="button" onClick={remove} disabled={deleting}
+              style={{ ...css.btn, background: 'rgba(232,57,42,0.08)', color: '#E8392A', border: '1px solid rgba(232,57,42,0.15)' }}>
+              {deleting ? '...' : 'Excluir'}
             </button>
-          </div>
+          )}
+          <button type="button" onClick={onClose}
+            style={{ ...css.btn, background: '#141414', color: '#666', border: '1px solid #1a1a1a' }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={save} disabled={saving || !titulo.trim() || !data}
+            style={{ ...css.btn, background: '#E8392A', color: '#fff', opacity: (!titulo.trim() || !data) ? 0.5 : 1 }}>
+            {saving ? 'Salvando...' : task ? 'Salvar Alterações' : recorrencia !== 'nenhuma' ? 'Criar Série' : 'Criar Tarefa'}
+          </button>
         </div>
       </div>
     </div>
@@ -2048,152 +2178,358 @@ function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved 
 }
 
 // ═══════════════════════════════════════════
-// AGENDA — CALENDAR VIEW
+// AGENDA — CALENDAR VIEWS (Mês / Semana / Dia)
 // ═══════════════════════════════════════════
 const MONTH_NAMES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const WEEK_DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const HOURS_DAY = Array.from({ length: 16 }, (_, i) => i + 7); // 07–22h
 
 function AgendaView({ operadoraName, devs = [] }) {
   const today = new Date();
+  const todayStr = todayISO();
+
+  const [calView, setCalView] = useState('mes'); // 'mes' | 'semana' | 'dia'
+
+  // Month
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
+
+  // Week (domingo da semana atual)
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date(today); d.setDate(d.getDate() - d.getDay());
+    return d.toISOString().split('T')[0];
+  });
+
+  // Day
+  const [selectedDay, setSelectedDay] = useState(todayStr);
+
   const [tasks, setTasks] = useState([]);
+  const [overdueTasks, setOverdueTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadErr, setLoadErr] = useState('');
-  const [modal, setModal] = useState(null); // null | { task? , date? }
+  const [modal, setModal] = useState(null);
+  const [showOverdue, setShowOverdue] = useState(false);
 
   const loadTasks = useCallback(async () => {
     if (!operadoraName) return;
     setLoading(true); setLoadErr('');
     try {
-      const data = await apiTarefas.list(operadoraName, year, month);
+      let data;
+      if (calView === 'mes') {
+        data = await apiTarefas.list(operadoraName, year, month);
+      } else if (calView === 'semana') {
+        const we = new Date(weekStart + 'T12:00:00'); we.setDate(we.getDate() + 6);
+        data = await apiTarefas.listRange(operadoraName, weekStart, we.toISOString().split('T')[0]);
+      } else {
+        data = await apiTarefas.listRange(operadoraName, selectedDay, selectedDay);
+      }
       if (Array.isArray(data)) setTasks(data);
       else setLoadErr(data?.error || 'Erro ao carregar tarefas.');
     } catch { setLoadErr('Erro de conexão ao carregar agenda.'); }
     finally { setLoading(false); }
-  }, [operadoraName, year, month]);
+  }, [operadoraName, calView, year, month, weekStart, selectedDay]);
+
+  const loadOverdue = useCallback(async () => {
+    if (!operadoraName) return;
+    try {
+      const d = await apiTarefas.listOverdue(operadoraName);
+      if (Array.isArray(d)) setOverdueTasks(d);
+    } catch {}
+  }, [operadoraName]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+  useEffect(() => { loadOverdue(); }, [loadOverdue]);
 
-  const prevMonth = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
-  const goToday = () => { setMonth(today.getMonth() + 1); setYear(today.getFullYear()); };
+  const handleSaved = () => { setModal(null); loadTasks(); loadOverdue(); };
 
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const startWd = new Date(year, month - 1, 1).getDay();
-  const cells = [...Array(startWd).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  // ── Navigation ────────────────────────────────────────────────────────
+  const resetToToday = () => {
+    setYear(today.getFullYear()); setMonth(today.getMonth() + 1);
+    const d = new Date(today); d.setDate(d.getDate() - d.getDay());
+    setWeekStart(d.toISOString().split('T')[0]);
+    setSelectedDay(todayStr);
+  };
 
-  const tasksByDay = {};
-  tasks.forEach(t => {
-    const d = parseInt(String(t.data).split('T')[0].split('-')[2]);
-    (tasksByDay[d] = tasksByDay[d] || []).push(t);
-  });
+  const switchView = (v) => { setCalView(v); resetToToday(); };
 
-  const isToday = (d) => d && year === today.getFullYear() && month === today.getMonth() + 1 && d === today.getDate();
-  const dayStr = (d) => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const prevNav = () => {
+    if (calView === 'mes') { if (month === 1) { setMonth(12); setYear(y => y-1); } else setMonth(m => m-1); }
+    else if (calView === 'semana') { const d = new Date(weekStart+'T12:00:00'); d.setDate(d.getDate()-7); setWeekStart(d.toISOString().split('T')[0]); }
+    else { const d = new Date(selectedDay+'T12:00:00'); d.setDate(d.getDate()-1); setSelectedDay(d.toISOString().split('T')[0]); }
+  };
+  const nextNav = () => {
+    if (calView === 'mes') { if (month === 12) { setMonth(1); setYear(y => y+1); } else setMonth(m => m+1); }
+    else if (calView === 'semana') { const d = new Date(weekStart+'T12:00:00'); d.setDate(d.getDate()+7); setWeekStart(d.toISOString().split('T')[0]); }
+    else { const d = new Date(selectedDay+'T12:00:00'); d.setDate(d.getDate()+1); setSelectedDay(d.toISOString().split('T')[0]); }
+  };
 
+  const navLabel = () => {
+    if (calView === 'mes') return `${MONTH_NAMES_PT[month-1]} ${year}`;
+    if (calView === 'semana') {
+      const ws = new Date(weekStart+'T12:00:00');
+      const we = new Date(weekStart+'T12:00:00'); we.setDate(we.getDate()+6);
+      return `${ws.getDate()} ${MONTH_NAMES_PT[ws.getMonth()].slice(0,3)} – ${we.getDate()} ${MONTH_NAMES_PT[we.getMonth()].slice(0,3)} ${we.getFullYear()}`;
+    }
+    const d = new Date(selectedDay+'T12:00:00');
+    return `${WEEK_DAYS[d.getDay()]}, ${d.getDate()} de ${MONTH_NAMES_PT[d.getMonth()]} ${d.getFullYear()}`;
+  };
+
+  // ── Helpers ───────────────────────────────────────────────────────────
   const taskColor = (t) => {
     if (t.status === 'concluida') return { bg: 'rgba(34,197,94,0.1)', fg: '#22c55e' };
+    const pastDue = t.data && String(t.data).split('T')[0] < todayStr;
+    if (pastDue) return { bg: 'rgba(232,57,42,0.12)', fg: '#ff6b5b' };
     if (t.tipo === 'onboarding') return { bg: 'rgba(99,102,241,0.12)', fg: '#818cf8' };
-    return { bg: 'rgba(232,57,42,0.1)', fg: '#ff6b5b' };
+    return { bg: 'rgba(20,184,166,0.1)', fg: '#2dd4bf' };
   };
+
+  const taskPill = (t, ti, stopProp = true) => {
+    const { bg, fg } = taskColor(t);
+    return (
+      <div key={ti}
+        onClick={e => { if (stopProp) e.stopPropagation(); setModal({ task: t }); }}
+        title={t.titulo}
+        style={{ fontSize: 10, background: bg, color: fg, borderRadius: 4, padding: '2px 6px', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'concluida' ? 'line-through' : 'none', cursor: 'pointer', fontWeight: 500 }}>
+        {t.hora ? String(t.hora).slice(0,5)+' ' : ''}{t.titulo}
+      </div>
+    );
+  };
+
+  const diffDays = (ds) => Math.max(0, Math.floor((today - new Date(String(ds).split('T')[0]+'T12:00:00')) / 86400000));
+
+  // ── Month view data ───────────────────────────────────────────────────
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startWd = new Date(year, month-1, 1).getDay();
+  const cells = [...Array(startWd).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i+1)];
+  const dayStr = (d) => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+  const tasksByKey = {};
+  tasks.forEach(t => {
+    const k = String(t.data).split('T')[0];
+    (tasksByKey[k] = tasksByKey[k] || []).push(t);
+  });
+
+  // ── Week view data ────────────────────────────────────────────────────
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart+'T12:00:00'); d.setDate(d.getDate()+i);
+    return { ds: d.toISOString().split('T')[0], day: d.getDate(), wd: WEEK_DAYS[d.getDay()], m: d.getMonth() };
+  });
+
+  // ── Day view data ─────────────────────────────────────────────────────
+  const noHourTasks = tasks.filter(t => !t.hora);
+  const tasksByHour = {};
+  tasks.filter(t => t.hora).forEach(t => {
+    const h = parseInt(String(t.hora).split(':')[0]);
+    (tasksByHour[h] = tasksByHour[h] || []).push(t);
+  });
 
   const pendingCount = tasks.filter(t => t.status === 'pendente').length;
   const doneCount = tasks.filter(t => t.status === 'concluida').length;
 
+  const btnNav = { ...css.btn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '6px 13px', fontSize: 13 };
+
   return (
     <div style={{ padding: '24px 28px', background: '#fff', minHeight: 'calc(100vh - 60px)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <button onClick={prevMonth} style={{ ...css.btn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '7px 13px' }}>←</button>
-        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5, minWidth: 200, color: '#111827' }}>
-          {MONTH_NAMES_PT[month - 1]} {year}
+
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>Agenda</div>
+
+        {/* Badge atrasadas */}
+        {overdueTasks.length > 0 && (
+          <button onClick={() => setShowOverdue(true)}
+            style={{ border: 'none', background: '#fef3c7', color: '#92400e', borderRadius: 20, fontSize: 11, fontWeight: 700, padding: '4px 10px', cursor: 'pointer' }}>
+            ⚠️ {overdueTasks.length} atrasadas
+          </button>
+        )}
+
+        {/* View switcher */}
+        <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 8, padding: 2, marginLeft: 4 }}>
+          {[['mes','Mês'],['semana','Semana'],['dia','Dia']].map(([v, label]) => (
+            <button key={v} onClick={() => switchView(v)}
+              style={{ ...css.btn, fontSize: 11, padding: '5px 12px', border: 'none',
+                background: calView === v ? '#fff' : 'transparent',
+                color: calView === v ? '#111827' : '#6b7280',
+                boxShadow: calView === v ? '0 1px 2px rgba(0,0,0,0.08)' : 'none' }}>
+              {label}
+            </button>
+          ))}
         </div>
-        <button onClick={nextMonth} style={{ ...css.btn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '7px 13px' }}>→</button>
-        <button onClick={goToday} style={{ ...css.btn, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: 11 }}>Hoje</button>
-        {loading && <div style={{ width: 16, height: 16, border: '2px solid #e5e7eb', borderTopColor: '#E8392A', borderRadius: '50%', animation: 'sp .8s linear infinite' }} />}
+
+        {/* Nav */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={prevNav} style={btnNav}>‹</button>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 180, textAlign: 'center' }}>{navLabel()}</div>
+          <button onClick={nextNav} style={btnNav}>›</button>
+        </div>
+        <button onClick={resetToToday} style={{ ...css.btn, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: 11 }}>Hoje</button>
+
+        {loading && <div style={{ width: 14, height: 14, border: '2px solid #e5e7eb', borderTopColor: '#E8392A', borderRadius: '50%', animation: 'sp .8s linear infinite' }} />}
         {loadErr && <span style={{ fontSize: 12, color: '#E8392A' }}>{loadErr}</span>}
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#6b7280' }}><span style={{ color: '#111827', fontWeight: 600 }}>{pendingCount}</span> pendentes</span>
           <span style={{ fontSize: 12, color: '#6b7280' }}><span style={{ color: '#16a34a', fontWeight: 600 }}>{doneCount}</span> concluídas</span>
-          <button onClick={() => setModal({ date: todayISO() })}
+          <button onClick={() => setModal({ date: todayStr })}
             style={{ ...css.btn, background: '#E8392A', color: '#fff' }}>+ Nova Tarefa</button>
         </div>
       </div>
 
-      {/* Weekday headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e5e7eb', marginBottom: 0 }}>
-        {WEEK_DAYS.map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#9ca3af', padding: '8px 0', textTransform: 'uppercase', letterSpacing: 0.8 }}>{d}</div>
-        ))}
-      </div>
+      {/* ── Visão Mês ──────────────────────────────────────────────── */}
+      {calView === 'mes' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e5e7eb' }}>
+            {WEEK_DAYS.map(d => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#9ca3af', padding: '8px 0', textTransform: 'uppercase', letterSpacing: 0.8 }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', border: '1px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
+            {cells.map((d, i) => {
+              const ds = d ? dayStr(d) : null;
+              const dayTasks = ds ? (tasksByKey[ds] || []) : [];
+              const isTodayCell = ds === todayStr;
+              const isLastRow = i >= cells.length - 7;
+              return (
+                <div key={i} onClick={() => d && setModal({ date: dayStr(d) })}
+                  style={{ background: d ? '#fff' : '#fafafa', minHeight: 100, padding: 8, cursor: d ? 'pointer' : 'default',
+                    borderRight: (i+1) % 7 !== 0 ? '1px solid #e5e7eb' : 'none',
+                    borderBottom: !isLastRow ? '1px solid #e5e7eb' : 'none', transition: 'background .1s' }}
+                  onMouseEnter={e => { if (d) e.currentTarget.style.background = '#f9fafb'; }}
+                  onMouseLeave={e => { if (d) e.currentTarget.style.background = '#fff'; }}>
+                  {d && <>
+                    <div style={{ fontSize: 12, fontWeight: isTodayCell ? 700 : 500, color: isTodayCell ? '#fff' : '#374151',
+                      width: 24, height: 24, borderRadius: '50%', background: isTodayCell ? '#E8392A' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>{d}</div>
+                    {dayTasks.slice(0,3).map((t, ti) => taskPill(t, ti))}
+                    {dayTasks.length > 3 && <div style={{ fontSize: 9, color: '#9ca3af', paddingLeft: 4 }}>+{dayTasks.length-3} mais</div>}
+                  </>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
-      {/* Calendar grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', border: '1px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
-        {cells.map((d, i) => {
-          const dayTasks = d ? (tasksByDay[d] || []) : [];
-          const todayCell = isToday(d);
-          const isLastRow = i >= cells.length - 7;
-          return (
-            <div key={i} onClick={() => d && setModal({ date: dayStr(d) })}
-              style={{
-                background: d ? '#fff' : '#fafafa',
-                minHeight: 100, padding: 8,
-                cursor: d ? 'pointer' : 'default',
-                borderRight: (i + 1) % 7 !== 0 ? '1px solid #e5e7eb' : 'none',
-                borderBottom: !isLastRow ? '1px solid #e5e7eb' : 'none',
-                transition: 'background .1s',
-              }}
-              onMouseEnter={e => { if (d) e.currentTarget.style.background = '#f9fafb'; }}
-              onMouseLeave={e => { if (d) e.currentTarget.style.background = '#fff'; }}>
-              {d && <>
-                <div style={{
-                  fontSize: 12, fontWeight: todayCell ? 700 : 500,
-                  color: todayCell ? '#fff' : '#374151',
-                  width: 24, height: 24, borderRadius: '50%',
-                  background: todayCell ? '#E8392A' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  marginBottom: 4
-                }}>{d}</div>
-                {dayTasks.slice(0, 3).map((t, ti) => {
+      {/* ── Visão Semana ───────────────────────────────────────────── */}
+      {calView === 'semana' && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+            {weekDays.map(({ ds, day, wd }, wi) => {
+              const dayTasks = tasksByKey[ds] || [];
+              const isTodayCell = ds === todayStr;
+              return (
+                <div key={ds} style={{ borderRight: wi < 6 ? '1px solid #e5e7eb' : 'none' }}>
+                  <div onClick={() => { setCalView('dia'); setSelectedDay(ds); }}
+                    style={{ padding: '10px 8px', borderBottom: '1px solid #e5e7eb', background: isTodayCell ? 'rgba(232,57,42,0.04)' : '#fafafa', cursor: 'pointer', textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5 }}>{wd}</div>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: isTodayCell ? '#E8392A' : 'transparent',
+                      color: isTodayCell ? '#fff' : '#374151', fontSize: 13, fontWeight: 700,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '4px auto 0' }}>{day}</div>
+                  </div>
+                  <div onClick={() => setModal({ date: ds })}
+                    style={{ minHeight: 200, padding: 6, cursor: 'pointer', background: '#fff' }}>
+                    {dayTasks.map((t, ti) => taskPill(t, ti))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Visão Dia ──────────────────────────────────────────────── */}
+      {calView === 'dia' && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+          {noHourTasks.length > 0 && (
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+              <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5, marginBottom: 6 }}>Sem horário</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {noHourTasks.map((t, i) => {
                   const { bg, fg } = taskColor(t);
                   return (
-                    <div key={ti}
-                      onClick={e => { e.stopPropagation(); setModal({ task: t }); }}
-                      style={{ fontSize: 10, background: bg, color: fg, borderRadius: 4, padding: '2px 6px', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'concluida' ? 'line-through' : 'none', cursor: 'pointer', fontWeight: 500 }}
-                      title={t.titulo}>
-                      {t.hora ? t.hora.slice(0, 5) + ' ' : ''}{t.titulo}
+                    <div key={i} onClick={() => setModal({ task: t })}
+                      style={{ fontSize: 11, background: bg, color: fg, borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
+                      {t.titulo}
                     </div>
                   );
                 })}
-                {dayTasks.length > 3 && <div style={{ fontSize: 9, color: '#9ca3af', paddingLeft: 4 }}>+{dayTasks.length - 3} mais</div>}
-              </>}
+              </div>
             </div>
-          );
-        })}
+          )}
+          {HOURS_DAY.map(h => {
+            const hourTasks = tasksByHour[h] || [];
+            return (
+              <div key={h} style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', minHeight: 52 }}>
+                <div style={{ width: 56, flexShrink: 0, padding: '8px 10px', fontSize: 11, color: '#9ca3af', fontWeight: 500, borderRight: '1px solid #e5e7eb' }}>
+                  {String(h).padStart(2,'0')}:00
+                </div>
+                <div onClick={() => setModal({ date: selectedDay, hora: `${String(h).padStart(2,'0')}:00` })}
+                  style={{ flex: 1, padding: '4px 8px', cursor: 'pointer', display: 'flex', flexWrap: 'wrap', gap: 4, alignContent: 'flex-start' }}>
+                  {hourTasks.map((t, i) => {
+                    const { bg, fg } = taskColor(t);
+                    return (
+                      <div key={i} onClick={e => { e.stopPropagation(); setModal({ task: t }); }}
+                        style={{ fontSize: 11, background: bg, color: fg, borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
+                        {String(t.hora).slice(0,5)} {t.titulo}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Legenda ────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
+        {[['rgba(20,184,166,0.5)','Geral'], ['rgba(99,102,241,0.5)','Onboarding'], ['rgba(34,197,94,0.5)','Concluída'], ['rgba(232,57,42,0.5)','Atrasada']].map(([bg, label]) => (
+          <span key={label} style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: bg, display: 'inline-block' }} /> {label}
+          </span>
+        ))}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
-        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(232,57,42,0.5)', display: 'inline-block' }} /> Geral
-        </span>
-        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(99,102,241,0.5)', display: 'inline-block' }} /> Onboarding
-        </span>
-        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.5)', display: 'inline-block' }} /> Concluída
-        </span>
-      </div>
+      {/* ── Modal atrasadas ─────────────────────────────────────────── */}
+      {showOverdue && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={() => setShowOverdue(false)}>
+          <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: 14, width: '90vw', maxWidth: 580, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ fontWeight: 700, color: '#f5f5f5', fontSize: 14 }}>⚠️ Tarefas em Atraso ({overdueTasks.length})</div>
+              <button onClick={() => setShowOverdue(false)} style={{ ...css.btn, background: 'transparent', color: '#555', border: 'none', fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {overdueTasks.map(t => (
+                <div key={t.id} onClick={() => { setShowOverdue(false); setModal({ task: t }); }}
+                  style={{ padding: '12px 20px', borderBottom: '1px solid #111', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#111'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: '#f5f5f5', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.titulo}</div>
+                    <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                      {t.dev_label ? t.dev_label + ' · ' : ''}{String(t.data).split('T')[0]}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#E8392A', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {diffDays(t.data)}d de atraso
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* ── Modal tarefa ─────────────────────────────────────────────── */}
       {modal && (
         <TarefaModal
           task={modal.task}
           defaultDate={modal.date}
+          defaultHora={modal.hora}
           operadoraName={operadoraName}
           devs={devs}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); loadTasks(); }}
+          onSaved={handleSaved}
         />
       )}
     </div>

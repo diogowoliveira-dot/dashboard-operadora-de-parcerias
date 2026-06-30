@@ -108,6 +108,8 @@ async function _doInitDb() {
   `;
   await sql`ALTER TABLE tarefas ADD COLUMN IF NOT EXISTS descricao TEXT`;
   await sql`ALTER TABLE tarefas ADD COLUMN IF NOT EXISTS hora TIME`;
+  await sql`ALTER TABLE tarefas ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'`;
+  await sql`ALTER TABLE tarefas ADD COLUMN IF NOT EXISTS recorrencia TEXT DEFAULT 'nenhuma'`;
 
   // ── Índices para performance ─────────────────────────────────────────
   await sql`CREATE INDEX IF NOT EXISTS idx_carteira_operadora ON carteira(operadora_name)`;
