@@ -44,5 +44,5 @@ export function setCookieHeader(token, expiresAt) {
 }
 
 export function clearCookieHeader() {
-  return `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  return `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0; Secure`;
 }

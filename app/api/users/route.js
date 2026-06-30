@@ -127,7 +127,12 @@ export async function PATCH(req) {
       const { role } = body;
       if (!['admin', 'operadora'].includes(role))
         return NextResponse.json({ error: 'Perfil inválido' }, { status: 400 });
-      await sql`UPDATE users SET role = ${role} WHERE id = ${id} AND role != 'master'`;
+      // Admin não tem operadora — limpar o vínculo ao promover
+      if (role === 'admin') {
+        await sql`UPDATE users SET role = ${role}, operadora_name = NULL WHERE id = ${id} AND role != 'master'`;
+      } else {
+        await sql`UPDATE users SET role = ${role} WHERE id = ${id} AND role != 'master'`;
+      }
       return NextResponse.json({ ok: true });
     }
 

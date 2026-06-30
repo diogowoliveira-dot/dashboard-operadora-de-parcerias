@@ -89,15 +89,20 @@ export async function POST(req) {
 
     // Auto-cria tarefas de onboarding somente para novas entradas
     if (rows[0]?.inserted) {
-      for (const t of ONBOARDING_TASKS) {
-        await sql`
-          INSERT INTO tarefas (operadora_name, dev_value, dev_label, titulo, data, prioridade, tipo)
-          VALUES (
-            ${operadora_name}, ${dev_value}, ${dev_label},
-            ${t.titulo}, ${addDays(start_date, t.dias)},
-            'media', 'onboarding'
-          )
-        `;
+      try {
+        for (const t of ONBOARDING_TASKS) {
+          await sql`
+            INSERT INTO tarefas (operadora_name, dev_value, dev_label, titulo, data, prioridade, tipo)
+            VALUES (
+              ${operadora_name}, ${dev_value}, ${dev_label},
+              ${t.titulo}, ${addDays(start_date, t.dias)},
+              'media', 'onboarding'
+            )
+          `;
+        }
+      } catch (taskErr) {
+        // Não falha a inserção da carteira se as tarefas de onboarding falharem
+        console.error('[carteira] Erro ao criar tarefas de onboarding:', taskErr.message);
       }
     }
 

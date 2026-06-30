@@ -43,8 +43,8 @@ const apiAuth = {
 // ═══════════════════════════════════════════
 const apiOps = {
   list: () => fetch('/api/ops').then(r => r.json()),
-  create: (name) => fetch('/api/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }),
-  remove: (name) => fetch(`/api/ops?name=${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  create: (name) => fetch('/api/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then(r => r.json()),
+  remove: (name) => fetch(`/api/ops?name=${encodeURIComponent(name)}`, { method: 'DELETE' }).then(r => r.json()),
   updateEmail: (name, email) => fetch('/api/ops', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email }) }),
   sendReport: (operadora_name) => fetch('/api/email-report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operadora_name }) }),
 };
@@ -787,9 +787,15 @@ function ForgotScreen({ onBack }) {
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true); setErr('');
-    await apiAuth.forgotPassword(email);
-    setLoading(false);
-    setSent(true);
+    try {
+      const r = await apiAuth.forgotPassword(email);
+      if (r?.ok) setSent(true);
+      else setErr(r?.error || 'Erro ao enviar. Tente novamente.');
+    } catch {
+      setErr('Erro de conexão. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -956,13 +962,19 @@ function UsersTab({ ops }) {
 
   const deleteUser = async (id) => {
     if (!confirm('Excluir este usuário permanentemente?')) return;
-    await apiAuth.deleteUser(id);
-    reload();
+    try {
+      const r = await apiAuth.deleteUser(id);
+      if (!r?.ok) { setInvMsg({ ok: false, text: r?.error || 'Erro ao excluir' }); return; }
+      reload();
+    } catch { setInvMsg({ ok: false, text: 'Erro de conexão' }); }
   };
 
   const toggleActive = async (id) => {
-    await apiAuth.toggleActive(id);
-    reload();
+    try {
+      const r = await apiAuth.toggleActive(id);
+      if (!r?.ok) { setInvMsg({ ok: false, text: r?.error || 'Erro ao alterar status' }); return; }
+      reload();
+    } catch { setInvMsg({ ok: false, text: 'Erro de conexão' }); }
   };
 
   const reassign = async (id, operadora_name) => {
@@ -1896,12 +1908,13 @@ function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved 
   const [descricao, setDescricao] = useState(task?.descricao || '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [errMsg, setErrMsg] = useState('');
 
   const selectedDev = devs.find(d => String(d.value) === devValue);
 
   const save = async () => {
     if (!titulo.trim() || !data) return;
-    setSaving(true);
+    setSaving(true); setErrMsg('');
     try {
       const body = {
         operadora_name: operadoraName,
@@ -1920,22 +1933,30 @@ function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved 
         await apiTarefas.create(body);
       }
       onSaved();
-    } catch {} finally { setSaving(false); }
+    } catch { setErrMsg('Erro ao salvar. Tente novamente.'); }
+    finally { setSaving(false); }
   };
 
   const remove = async () => {
     if (!task?.id) return;
-    setDeleting(true);
+    setDeleting(true); setErrMsg('');
     try { await apiTarefas.remove(task.id); onSaved(); }
-    catch {} finally { setDeleting(false); }
+    catch { setErrMsg('Erro ao excluir. Tente novamente.'); }
+    finally { setDeleting(false); }
   };
 
   const toggleStatus = async () => {
     if (!task?.id) return;
+    const prev = status;
     const next = status === 'concluida' ? 'pendente' : 'concluida';
     setStatus(next);
-    await apiTarefas.update({ id: task.id, status: next });
-    onSaved();
+    try {
+      await apiTarefas.update({ id: task.id, status: next });
+      onSaved();
+    } catch {
+      setStatus(prev); // rollback otimista
+      setErrMsg('Erro ao atualizar status.');
+    }
   };
 
   const prioColor = { baixa: '#22c55e', media: '#f59e0b', alta: '#E8392A' };
@@ -1999,6 +2020,8 @@ function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved 
               style={{ ...css.input, width: '100%', boxSizing: 'border-box', minHeight: 70, resize: 'vertical', fontFamily: 'inherit' }} />
           </div>
 
+          {errMsg && <div style={{ fontSize: 12, color: '#E8392A', padding: '8px 12px', background: 'rgba(232,57,42,0.08)', borderRadius: 6, border: '1px solid rgba(232,57,42,0.2)' }}>{errMsg}</div>}
+
           <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
             {task && <>
               <button type="button" onClick={toggleStatus}
@@ -2036,15 +2059,18 @@ function AgendaView({ operadoraName, devs = [] }) {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState('');
   const [modal, setModal] = useState(null); // null | { task? , date? }
 
   const loadTasks = useCallback(async () => {
     if (!operadoraName) return;
-    setLoading(true);
+    setLoading(true); setLoadErr('');
     try {
       const data = await apiTarefas.list(operadoraName, year, month);
       if (Array.isArray(data)) setTasks(data);
-    } catch {} finally { setLoading(false); }
+      else setLoadErr(data?.error || 'Erro ao carregar tarefas.');
+    } catch { setLoadErr('Erro de conexão ao carregar agenda.'); }
+    finally { setLoading(false); }
   }, [operadoraName, year, month]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
@@ -2086,6 +2112,7 @@ function AgendaView({ operadoraName, devs = [] }) {
         <button onClick={nextMonth} style={{ ...css.btn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '7px 13px' }}>→</button>
         <button onClick={goToday} style={{ ...css.btn, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: 11 }}>Hoje</button>
         {loading && <div style={{ width: 16, height: 16, border: '2px solid #e5e7eb', borderTopColor: '#E8392A', borderRadius: '50%', animation: 'sp .8s linear infinite' }} />}
+        {loadErr && <span style={{ fontSize: 12, color: '#E8392A' }}>{loadErr}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#6b7280' }}><span style={{ color: '#111827', fontWeight: 600 }}>{pendingCount}</span> pendentes</span>
           <span style={{ fontSize: 12, color: '#6b7280' }}><span style={{ color: '#16a34a', fontWeight: 600 }}>{doneCount}</span> concluídas</span>
@@ -2255,10 +2282,12 @@ export default function App() {
 
   const addOp = async () => {
     if (!newOp.trim()) return;
-    await apiOps.create(newOp.trim());
+    const name = newOp.trim();
     setNewOp('');
+    // Pré-seleciona pelo nome para que reloadOps encontre e complete o objeto real
+    setCurOp({ name, devs: [] });
+    await apiOps.create(name);
     await reloadOps();
-    setCurOp(ops.find(o => o.name === newOp.trim()) || { name: newOp.trim(), devs: [] });
   };
 
   const rmOp = async (n) => {

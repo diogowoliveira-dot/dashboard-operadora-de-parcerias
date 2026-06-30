@@ -3,7 +3,14 @@ import { neon } from '@neondatabase/serverless';
 const sql = neon(process.env.dashboardoperadoraparcerias_DATABASE_URL);
 export default sql;
 
-export async function initDb() {
+// Singleton: evita re-executar 20+ DDL statements em cada request quente
+let _initPromise = null;
+export function initDb() {
+  if (!_initPromise) _initPromise = _doInitDb();
+  return _initPromise;
+}
+
+async function _doInitDb() {
   // ── Tabela: operadoras ────────────────────────────────────────────────
   await sql`
     CREATE TABLE IF NOT EXISTS operadoras (
