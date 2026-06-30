@@ -59,6 +59,12 @@ const apiCarteira = {
     body: JSON.stringify({ operadora_name, dev_value, start_date }),
   }),
 };
+const apiTarefas = {
+  list: (operadora_name, year, month) => fetch(`/api/tarefas?operadora_name=${encodeURIComponent(operadora_name)}&year=${year}&month=${month}`).then(r => r.json()),
+  create: (body) => fetch('/api/tarefas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  update: (body) => fetch('/api/tarefas', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  remove: (id) => fetch(`/api/tarefas?id=${id}`, { method: 'DELETE' }).then(r => r.json()),
+};
 
 // ═══════════════════════════════════════════
 // STYLES
@@ -1876,6 +1882,290 @@ function OnboardingTab({ opName, operadoraName = '', devValue = '', devLabel = '
 }
 
 // ═══════════════════════════════════════════
+// AGENDA — TAREFA MODAL
+// ═══════════════════════════════════════════
+function TarefaModal({ task, defaultDate, operadoraName, devs, onClose, onSaved }) {
+  const [titulo, setTitulo] = useState(task?.titulo || '');
+  const [data, setData] = useState(
+    task?.data ? String(task.data).split('T')[0] : (defaultDate || todayISO())
+  );
+  const [hora, setHora] = useState(task?.hora ? String(task.hora).slice(0, 5) : '');
+  const [prioridade, setPrioridade] = useState(task?.prioridade || 'media');
+  const [status, setStatus] = useState(task?.status || 'pendente');
+  const [devValue, setDevValue] = useState(task?.dev_value ? String(task.dev_value) : '');
+  const [descricao, setDescricao] = useState(task?.descricao || '');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const selectedDev = devs.find(d => String(d.value) === devValue);
+
+  const save = async () => {
+    if (!titulo.trim() || !data) return;
+    setSaving(true);
+    try {
+      const body = {
+        operadora_name: operadoraName,
+        titulo: titulo.trim(),
+        data,
+        hora: hora || null,
+        prioridade,
+        status,
+        descricao: descricao.trim() || null,
+        dev_value: selectedDev ? selectedDev.value : null,
+        dev_label: selectedDev ? selectedDev.label : null,
+      };
+      if (task?.id) {
+        await apiTarefas.update({ id: task.id, ...body });
+      } else {
+        await apiTarefas.create(body);
+      }
+      onSaved();
+    } catch {} finally { setSaving(false); }
+  };
+
+  const remove = async () => {
+    if (!task?.id) return;
+    setDeleting(true);
+    try { await apiTarefas.remove(task.id); onSaved(); }
+    catch {} finally { setDeleting(false); }
+  };
+
+  const toggleStatus = async () => {
+    if (!task?.id) return;
+    const next = status === 'concluida' ? 'pendente' : 'concluida';
+    setStatus(next);
+    await apiTarefas.update({ id: task.id, status: next });
+    onSaved();
+  };
+
+  const prioColor = { baixa: '#22c55e', media: '#f59e0b', alta: '#E8392A' };
+  const lbl = { fontSize: 11, color: '#555', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={onClose}>
+      <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{task ? 'Editar Tarefa' : 'Nova Tarefa'}</div>
+          <button onClick={onClose} style={{ ...css.btn, background: 'transparent', color: '#555', border: 'none', fontSize: 18, padding: '0 6px', lineHeight: 1 }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={lbl}>Título *</label>
+            <input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Descreva a tarefa..."
+              autoFocus style={{ ...css.input, width: '100%', boxSizing: 'border-box' }} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={lbl}>Data *</label>
+              <input type="date" value={data} onChange={e => setData(e.target.value)}
+                style={{ ...css.input, width: '100%', boxSizing: 'border-box', fontFamily: "'JetBrains Mono',monospace" }} />
+            </div>
+            <div>
+              <label style={lbl}>Horário</label>
+              <input type="time" value={hora} onChange={e => setHora(e.target.value)}
+                style={{ ...css.input, width: '100%', boxSizing: 'border-box', fontFamily: "'JetBrains Mono',monospace" }} />
+            </div>
+          </div>
+
+          {devs.length > 0 && <div>
+            <label style={lbl}>Incorporadora</label>
+            <select value={devValue} onChange={e => setDevValue(e.target.value)}
+              style={{ ...css.input, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
+              <option value="">Sem vinculação específica</option>
+              {devs.map(d => <option key={d.value} value={String(d.value)}>{d.label}</option>)}
+            </select>
+          </div>}
+
+          <div>
+            <label style={lbl}>Prioridade</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['baixa', 'media', 'alta'].map(p => (
+                <button key={p} type="button" onClick={() => setPrioridade(p)}
+                  style={{ ...css.btn, flex: 1,
+                    background: prioridade === p ? `rgba(${p === 'alta' ? '232,57,42' : p === 'media' ? '245,158,11' : '34,197,94'},0.15)` : '#141414',
+                    color: prioridade === p ? prioColor[p] : '#555',
+                    border: `1px solid ${prioridade === p ? prioColor[p] + '44' : '#1a1a1a'}` }}>
+                  {p === 'media' ? 'Média' : p.charAt(0).toUpperCase() + p.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={lbl}>Observação</label>
+            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Detalhes ou contexto..."
+              style={{ ...css.input, width: '100%', boxSizing: 'border-box', minHeight: 70, resize: 'vertical', fontFamily: 'inherit' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+            {task && <>
+              <button type="button" onClick={toggleStatus}
+                style={{ ...css.btn, flex: 1,
+                  background: status === 'concluida' ? 'rgba(34,197,94,0.12)' : '#141414',
+                  color: status === 'concluida' ? '#22c55e' : '#555',
+                  border: `1px solid ${status === 'concluida' ? 'rgba(34,197,94,0.25)' : '#1a1a1a'}` }}>
+                {status === 'concluida' ? '✓ Concluída' : 'Marcar Concluída'}
+              </button>
+              <button type="button" onClick={remove} disabled={deleting}
+                style={{ ...css.btn, background: 'rgba(232,57,42,0.08)', color: '#E8392A', border: '1px solid rgba(232,57,42,0.15)' }}>
+                {deleting ? '...' : 'Excluir'}
+              </button>
+            </>}
+            <button type="button" onClick={save} disabled={saving || !titulo.trim() || !data}
+              style={{ ...css.btn, background: '#E8392A', color: '#fff', flex: task ? 0 : 1, opacity: (!titulo.trim() || !data) ? 0.5 : 1 }}>
+              {saving ? 'Salvando...' : task ? 'Salvar' : 'Criar Tarefa'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// AGENDA — CALENDAR VIEW
+// ═══════════════════════════════════════════
+const MONTH_NAMES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const WEEK_DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+function AgendaView({ operadoraName, devs = [] }) {
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [modal, setModal] = useState(null); // null | { task? , date? }
+
+  const loadTasks = useCallback(async () => {
+    if (!operadoraName) return;
+    setLoading(true);
+    try {
+      const data = await apiTarefas.list(operadoraName, year, month);
+      if (Array.isArray(data)) setTasks(data);
+    } catch {} finally { setLoading(false); }
+  }, [operadoraName, year, month]);
+
+  useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  const prevMonth = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
+  const nextMonth = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
+  const goToday = () => { setMonth(today.getMonth() + 1); setYear(today.getFullYear()); };
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startWd = new Date(year, month - 1, 1).getDay();
+  const cells = [...Array(startWd).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+
+  const tasksByDay = {};
+  tasks.forEach(t => {
+    const d = parseInt(String(t.data).split('T')[0].split('-')[2]);
+    (tasksByDay[d] = tasksByDay[d] || []).push(t);
+  });
+
+  const isToday = (d) => d && year === today.getFullYear() && month === today.getMonth() + 1 && d === today.getDate();
+  const dayStr = (d) => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+  const taskColor = (t) => {
+    if (t.status === 'concluida') return { bg: 'rgba(34,197,94,0.1)', fg: '#22c55e' };
+    if (t.tipo === 'onboarding') return { bg: 'rgba(99,102,241,0.12)', fg: '#818cf8' };
+    return { bg: 'rgba(232,57,42,0.1)', fg: '#ff6b5b' };
+  };
+
+  const pendingCount = tasks.filter(t => t.status === 'pendente').length;
+  const doneCount = tasks.filter(t => t.status === 'concluida').length;
+
+  return (
+    <div style={{ padding: '24px 28px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button onClick={prevMonth} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a', padding: '7px 13px' }}>←</button>
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5, minWidth: 200 }}>
+          {MONTH_NAMES_PT[month - 1]} {year}
+        </div>
+        <button onClick={nextMonth} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a', padding: '7px 13px' }}>→</button>
+        <button onClick={goToday} style={{ ...css.btn, background: '#141414', color: '#555', border: '1px solid #1a1a1a', fontSize: 11 }}>Hoje</button>
+        {loading && <div style={{ width: 16, height: 16, border: '2px solid #1a1a1a', borderTopColor: '#E8392A', borderRadius: '50%', animation: 'sp .8s linear infinite' }} />}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#555' }}><span style={{ color: '#f5f5f5', fontWeight: 600 }}>{pendingCount}</span> pendentes</span>
+          <span style={{ fontSize: 12, color: '#555' }}><span style={{ color: '#22c55e', fontWeight: 600 }}>{doneCount}</span> concluídas</span>
+          <button onClick={() => setModal({ date: todayISO() })}
+            style={{ ...css.btn, background: '#E8392A', color: '#fff' }}>+ Nova Tarefa</button>
+        </div>
+      </div>
+
+      {/* Weekday headers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 1 }}>
+        {WEEK_DAYS.map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: '#444', padding: '7px 0', textTransform: 'uppercase', letterSpacing: 0.5 }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: '#141414', border: '1px solid #141414', borderRadius: 8, overflow: 'hidden' }}>
+        {cells.map((d, i) => {
+          const dayTasks = d ? (tasksByDay[d] || []) : [];
+          const todayCell = isToday(d);
+          return (
+            <div key={i} onClick={() => d && setModal({ date: dayStr(d) })}
+              style={{ background: '#0a0a0a', minHeight: 100, padding: 8, cursor: d ? 'pointer' : 'default', opacity: d ? 1 : 0, transition: 'background .1s' }}
+              onMouseEnter={e => { if (d) e.currentTarget.style.background = '#0f0f0f'; }}
+              onMouseLeave={e => { if (d) e.currentTarget.style.background = '#0a0a0a'; }}>
+              {d && <>
+                <div style={{
+                  fontSize: 12, fontWeight: todayCell ? 700 : 400,
+                  color: todayCell ? '#fff' : '#555',
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: todayCell ? '#E8392A' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 4
+                }}>{d}</div>
+                {dayTasks.slice(0, 3).map((t, ti) => {
+                  const { bg, fg } = taskColor(t);
+                  return (
+                    <div key={ti}
+                      onClick={e => { e.stopPropagation(); setModal({ task: t }); }}
+                      style={{ fontSize: 10, background: bg, color: fg, borderRadius: 4, padding: '2px 5px', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'concluida' ? 'line-through' : 'none', cursor: 'pointer' }}
+                      title={t.titulo}>
+                      {t.hora ? t.hora.slice(0, 5) + ' ' : ''}{t.titulo}
+                    </div>
+                  );
+                })}
+                {dayTasks.length > 3 && <div style={{ fontSize: 9, color: '#444', paddingLeft: 4 }}>+{dayTasks.length - 3} mais</div>}
+              </>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
+        <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(232,57,42,0.4)', display: 'inline-block' }} /> Geral
+        </span>
+        <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(99,102,241,0.4)', display: 'inline-block' }} /> Onboarding
+        </span>
+        <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.4)', display: 'inline-block' }} /> Concluída
+        </span>
+      </div>
+
+      {modal && (
+        <TarefaModal
+          task={modal.task}
+          defaultDate={modal.date}
+          operadoraName={operadoraName}
+          devs={devs}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); loadTasks(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════
 export default function App() {
@@ -2021,9 +2311,9 @@ export default function App() {
         {authUser.role === 'operadora' && authUser.operadora_name && <div style={{ fontSize: 11, color: '#555', fontFamily: "'JetBrains Mono',monospace" }}>{authUser.operadora_name}</div>}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {(canManage ? (isMaster ? ['operadora', 'diretoria', 'config', 'usuarios'] : ['operadora', 'diretoria', 'config']) : ['operadora']).map(v => (
+        {(canManage ? (isMaster ? ['operadora', 'agenda', 'diretoria', 'config', 'usuarios'] : ['operadora', 'agenda', 'diretoria', 'config']) : ['operadora', 'agenda']).map(v => (
           <button key={v} onClick={() => setView(v)} style={{ ...css.btn, background: view === v ? '#E8392A' : '#141414', color: view === v ? '#fff' : '#999', border: view === v ? 'none' : '1px solid #1a1a1a', textTransform: 'capitalize' }}>
-            {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v}
+            {v === 'config' ? '⚙ Config' : v === 'usuarios' ? '👥 Usuários' : v === 'agenda' ? '📅 Agenda' : v}
           </button>
         ))}
         <div style={{ width: 1, height: 20, background: '#1a1a1a', margin: '0 4px' }} />
@@ -2182,6 +2472,33 @@ export default function App() {
 
     {/* DIRETORIA — master or admin */}
     {view === 'diretoria' && canManage && <DirView operadoras={ops} />}
+
+    {/* AGENDA — todos os roles */}
+    {view === 'agenda' && <>
+      {canManage && ops.length > 0 && (
+        <div style={{ padding: '12px 28px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: '#555', marginRight: 4 }}>Operadora:</span>
+          {ops.map((op, i) => (
+            <button key={i} onClick={() => setCurOp(op)}
+              style={{ ...css.btn, padding: '5px 14px', fontSize: 12,
+                background: curOp?.name === op.name ? '#E8392A' : '#141414',
+                color: curOp?.name === op.name ? '#fff' : '#555',
+                border: curOp?.name === op.name ? 'none' : '1px solid #1a1a1a' }}>
+              {op.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {curOp
+        ? <AgendaView operadoraName={curOp.name} devs={curOp.devs || []} />
+        : <div style={{ textAlign: 'center', padding: 60 }}>
+            <div style={{ fontSize: 48, opacity: .3, marginBottom: 12 }}>📅</div>
+            <div style={{ fontSize: 15, fontWeight: 500, color: '#999' }}>
+              {canManage ? 'Selecione uma operadora acima' : 'Sua operadora ainda não está configurada'}
+            </div>
+          </div>
+      }
+    </>}
 
     {showDD && <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setShowDD(false)} />}
     {showProfile && <ProfilePanel user={authUser} onClose={() => setShowProfile(false)} onUpdated={u => setAuthUser(prev => ({ ...prev, ...u }))} />}

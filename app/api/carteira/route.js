@@ -1,12 +1,27 @@
 import { NextResponse } from 'next/server';
-import sql from '../../lib/db';
+import sql, { initDb } from '../../lib/db';
 import { requireRole } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+const ONBOARDING_TASKS = [
+  { titulo: 'Kick-off de boas-vindas com a equipe', dias: 0 },
+  { titulo: 'Envio de credenciais e acesso ao sistema', dias: 3 },
+  { titulo: 'Treinamento da equipe comercial', dias: 7 },
+  { titulo: 'Acompanhamento pós-treinamento', dias: 14 },
+  { titulo: 'Revisão de metas — 1º mês', dias: 30 },
+];
+
+function addDays(baseDate, n) {
+  const d = new Date(baseDate + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
 // POST /api/carteira → adiciona incorporadora — master ou admin
 export async function POST(req) {
   try {
+    await initDb();
     const me = await requireRole(req, 'master', 'admin');
     if (!me) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
@@ -14,11 +29,27 @@ export async function POST(req) {
     if (!operadora_name || !dev_value || !dev_label || !start_date)
       return NextResponse.json({ error: 'campos obrigatórios faltando' }, { status: 400 });
 
-    await sql`
+    const rows = await sql`
       INSERT INTO carteira (operadora_name, dev_value, dev_label, start_date)
       VALUES (${operadora_name}, ${dev_value}, ${dev_label}, ${start_date})
       ON CONFLICT (operadora_name, dev_value) DO UPDATE SET start_date = ${start_date}
+      RETURNING (xmax = 0) AS inserted
     `;
+
+    // Auto-cria tarefas de onboarding somente para novas entradas
+    if (rows[0]?.inserted) {
+      for (const t of ONBOARDING_TASKS) {
+        await sql`
+          INSERT INTO tarefas (operadora_name, dev_value, dev_label, titulo, data, prioridade, tipo)
+          VALUES (
+            ${operadora_name}, ${dev_value}, ${dev_label},
+            ${t.titulo}, ${addDays(start_date, t.dias)},
+            'media', 'onboarding'
+          )
+        `;
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

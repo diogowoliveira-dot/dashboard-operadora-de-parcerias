@@ -81,6 +81,27 @@ export async function initDb() {
     )
   `;
 
+  // ── Tabela: tarefas ──────────────────────────────────────────────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS tarefas (
+      id SERIAL PRIMARY KEY,
+      operadora_name TEXT NOT NULL REFERENCES operadoras(name) ON DELETE CASCADE ON UPDATE CASCADE,
+      dev_value INTEGER,
+      dev_label TEXT,
+      titulo TEXT NOT NULL,
+      descricao TEXT,
+      data DATE NOT NULL,
+      hora TIME,
+      status TEXT NOT NULL DEFAULT 'pendente',
+      prioridade TEXT NOT NULL DEFAULT 'media',
+      tipo TEXT NOT NULL DEFAULT 'geral',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`ALTER TABLE tarefas ADD COLUMN IF NOT EXISTS descricao TEXT`;
+  await sql`ALTER TABLE tarefas ADD COLUMN IF NOT EXISTS hora TIME`;
+
   // ── Índices para performance ─────────────────────────────────────────
   await sql`CREATE INDEX IF NOT EXISTS idx_carteira_operadora ON carteira(operadora_name)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_carteira_dev_value ON carteira(dev_value)`;
@@ -90,6 +111,8 @@ export async function initDb() {
   await sql`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_tarefas_operadora ON tarefas(operadora_name)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_tarefas_data ON tarefas(data)`;
 
   // ── Trigger: updated_at automático ───────────────────────────────────
   await sql`
@@ -106,7 +129,7 @@ export async function initDb() {
     DO $body$
     DECLARE tbl TEXT;
     BEGIN
-      FOREACH tbl IN ARRAY ARRAY['operadoras','carteira','users'] LOOP
+      FOREACH tbl IN ARRAY ARRAY['operadoras','carteira','users','tarefas'] LOOP
         IF NOT EXISTS (
           SELECT 1 FROM pg_trigger t
           JOIN pg_class c ON c.oid = t.tgrelid
