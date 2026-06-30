@@ -2076,45 +2076,53 @@ function AgendaView({ operadoraName, devs = [] }) {
   const doneCount = tasks.filter(t => t.status === 'concluida').length;
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div style={{ padding: '24px 28px', background: '#fff', minHeight: 'calc(100vh - 60px)' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <button onClick={prevMonth} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a', padding: '7px 13px' }}>←</button>
-        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5, minWidth: 200 }}>
+        <button onClick={prevMonth} style={{ ...css.btn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '7px 13px' }}>←</button>
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.5, minWidth: 200, color: '#111827' }}>
           {MONTH_NAMES_PT[month - 1]} {year}
         </div>
-        <button onClick={nextMonth} style={{ ...css.btn, background: '#141414', color: '#999', border: '1px solid #1a1a1a', padding: '7px 13px' }}>→</button>
-        <button onClick={goToday} style={{ ...css.btn, background: '#141414', color: '#555', border: '1px solid #1a1a1a', fontSize: 11 }}>Hoje</button>
-        {loading && <div style={{ width: 16, height: 16, border: '2px solid #1a1a1a', borderTopColor: '#E8392A', borderRadius: '50%', animation: 'sp .8s linear infinite' }} />}
+        <button onClick={nextMonth} style={{ ...css.btn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', padding: '7px 13px' }}>→</button>
+        <button onClick={goToday} style={{ ...css.btn, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: 11 }}>Hoje</button>
+        {loading && <div style={{ width: 16, height: 16, border: '2px solid #e5e7eb', borderTopColor: '#E8392A', borderRadius: '50%', animation: 'sp .8s linear infinite' }} />}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: '#555' }}><span style={{ color: '#f5f5f5', fontWeight: 600 }}>{pendingCount}</span> pendentes</span>
-          <span style={{ fontSize: 12, color: '#555' }}><span style={{ color: '#22c55e', fontWeight: 600 }}>{doneCount}</span> concluídas</span>
+          <span style={{ fontSize: 12, color: '#6b7280' }}><span style={{ color: '#111827', fontWeight: 600 }}>{pendingCount}</span> pendentes</span>
+          <span style={{ fontSize: 12, color: '#6b7280' }}><span style={{ color: '#16a34a', fontWeight: 600 }}>{doneCount}</span> concluídas</span>
           <button onClick={() => setModal({ date: todayISO() })}
             style={{ ...css.btn, background: '#E8392A', color: '#fff' }}>+ Nova Tarefa</button>
         </div>
       </div>
 
       {/* Weekday headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e5e7eb', marginBottom: 0 }}>
         {WEEK_DAYS.map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: '#444', padding: '7px 0', textTransform: 'uppercase', letterSpacing: 0.5 }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#9ca3af', padding: '8px 0', textTransform: 'uppercase', letterSpacing: 0.8 }}>{d}</div>
         ))}
       </div>
 
       {/* Calendar grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: '#141414', border: '1px solid #141414', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', border: '1px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
         {cells.map((d, i) => {
           const dayTasks = d ? (tasksByDay[d] || []) : [];
           const todayCell = isToday(d);
+          const isLastRow = i >= cells.length - 7;
           return (
             <div key={i} onClick={() => d && setModal({ date: dayStr(d) })}
-              style={{ background: '#0a0a0a', minHeight: 100, padding: 8, cursor: d ? 'pointer' : 'default', opacity: d ? 1 : 0, transition: 'background .1s' }}
-              onMouseEnter={e => { if (d) e.currentTarget.style.background = '#0f0f0f'; }}
-              onMouseLeave={e => { if (d) e.currentTarget.style.background = '#0a0a0a'; }}>
+              style={{
+                background: d ? '#fff' : '#fafafa',
+                minHeight: 100, padding: 8,
+                cursor: d ? 'pointer' : 'default',
+                borderRight: (i + 1) % 7 !== 0 ? '1px solid #e5e7eb' : 'none',
+                borderBottom: !isLastRow ? '1px solid #e5e7eb' : 'none',
+                transition: 'background .1s',
+              }}
+              onMouseEnter={e => { if (d) e.currentTarget.style.background = '#f9fafb'; }}
+              onMouseLeave={e => { if (d) e.currentTarget.style.background = '#fff'; }}>
               {d && <>
                 <div style={{
-                  fontSize: 12, fontWeight: todayCell ? 700 : 400,
-                  color: todayCell ? '#fff' : '#555',
+                  fontSize: 12, fontWeight: todayCell ? 700 : 500,
+                  color: todayCell ? '#fff' : '#374151',
                   width: 24, height: 24, borderRadius: '50%',
                   background: todayCell ? '#E8392A' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2125,13 +2133,13 @@ function AgendaView({ operadoraName, devs = [] }) {
                   return (
                     <div key={ti}
                       onClick={e => { e.stopPropagation(); setModal({ task: t }); }}
-                      style={{ fontSize: 10, background: bg, color: fg, borderRadius: 4, padding: '2px 5px', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'concluida' ? 'line-through' : 'none', cursor: 'pointer' }}
+                      style={{ fontSize: 10, background: bg, color: fg, borderRadius: 4, padding: '2px 6px', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.status === 'concluida' ? 'line-through' : 'none', cursor: 'pointer', fontWeight: 500 }}
                       title={t.titulo}>
                       {t.hora ? t.hora.slice(0, 5) + ' ' : ''}{t.titulo}
                     </div>
                   );
                 })}
-                {dayTasks.length > 3 && <div style={{ fontSize: 9, color: '#444', paddingLeft: 4 }}>+{dayTasks.length - 3} mais</div>}
+                {dayTasks.length > 3 && <div style={{ fontSize: 9, color: '#9ca3af', paddingLeft: 4 }}>+{dayTasks.length - 3} mais</div>}
               </>}
             </div>
           );
@@ -2140,14 +2148,14 @@ function AgendaView({ operadoraName, devs = [] }) {
 
       {/* Legend */}
       <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
-        <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(232,57,42,0.4)', display: 'inline-block' }} /> Geral
+        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(232,57,42,0.5)', display: 'inline-block' }} /> Geral
         </span>
-        <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(99,102,241,0.4)', display: 'inline-block' }} /> Onboarding
+        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(99,102,241,0.5)', display: 'inline-block' }} /> Onboarding
         </span>
-        <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.4)', display: 'inline-block' }} /> Concluída
+        <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.5)', display: 'inline-block' }} /> Concluída
         </span>
       </div>
 
