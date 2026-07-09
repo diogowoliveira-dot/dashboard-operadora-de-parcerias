@@ -2660,7 +2660,8 @@ export default function App() {
   const isAdmin = authUser?.role === 'admin';
   const isOperadora = authUser?.role === 'operadora';
   const canManage = isMaster || isAdmin;
-  const canEditDate = canManage || isOperadora;
+  const canEditCarteira = canManage || isOperadora; // operadora pode adicionar/remover da própria carteira
+  const canEditDate = canEditCarteira;
 
   // Auth loading spinner
   if (authLoading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}><Spin /></div>;
@@ -2756,7 +2757,7 @@ export default function App() {
         {/* SIDEBAR */}
         <aside style={{ width: 280, borderRight: '1px solid #1a1a1a', flexShrink: 0, overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
           <div style={{ padding: '16px 16px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: '#555', letterSpacing: .5 }}>Carteira de {curOp.name}</div>
-          {canManage && <div style={{ padding: '0 12px 12px', position: 'relative' }}>
+          {canEditCarteira && <div style={{ padding: '0 12px 12px', position: 'relative' }}>
             <input value={search} onChange={e => { setSearch(e.target.value); setShowDD(true); }} onFocus={() => setShowDD(true)}
               placeholder="+ Adicionar incorporadora..." style={{ ...css.input, width: '100%', fontSize: 12, padding: '8px 10px' }} />
             {showDD && search.length > 1 && filtered.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 12, right: 12, background: '#141414', border: '1px solid #1a1a1a', borderRadius: 8, maxHeight: 200, overflowY: 'auto', zIndex: 60, boxShadow: '0 8px 32px rgba(0,0,0,.5)' }}>
@@ -2770,7 +2771,7 @@ export default function App() {
             onMouseLeave={e => { if (selDev?.value !== d.value) e.currentTarget.style.background = 'transparent'; }}>
             <div onClick={() => setSelDev(d)} style={{ padding: '10px 16px 2px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, fontWeight: selDev?.value === d.value ? 600 : 400, color: selDev?.value === d.value ? '#f5f5f5' : '#999' }}>{d.label}</span>
-              {canManage && <span onClick={e => { e.stopPropagation(); rmDev(d.value); }} style={{ fontSize: 11, color: '#555', cursor: 'pointer', padding: '2px 6px' }}
+              {canEditCarteira && <span onClick={e => { e.stopPropagation(); rmDev(d.value); }} style={{ fontSize: 11, color: '#555', cursor: 'pointer', padding: '2px 6px' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#E8392A'} onMouseLeave={e => e.currentTarget.style.color = '#555'}>✕</span>}
             </div>
             {/* Start date */}
@@ -2790,7 +2791,7 @@ export default function App() {
             </div>
           </div>)}
           {!curOp.devs.length && <div style={{ padding: '20px 16px', fontSize: 12, color: '#555', textAlign: 'center' }}>
-            {canManage ? 'Busque incorporadoras acima' : 'Nenhuma incorporadora na sua carteira'}
+            {canEditCarteira ? 'Busque incorporadoras acima' : 'Nenhuma incorporadora na sua carteira'}
           </div>}
         </aside>
 
